@@ -5,9 +5,8 @@ component
   flex-direction: column
   min-width: 0
   min-height: 0
-  background-color: var(--color-panel-background)
-  border: 1px solid var(--color-panel-background-bright)
-  border-radius: 4px
+  background-color: var(--tv-dark-blue)
+  border: 1px solid var(--tv-cyan)
   overflow: hidden
 
   .head, .row
@@ -18,9 +17,10 @@ component
     white-space: pre
 
   .head
-    color: var(--color-dark)
+    color: var(--tv-black)
     font-size: 0.75em
-    border-bottom: 1px solid var(--color-panel-background-bright)
+    background-color: var(--tv-cyan)
+    border-bottom: 1px solid var(--tv-bright-cyan)
 
     .index
       padding-left: 0.75em
@@ -43,28 +43,28 @@ component
     will-change: transform
 
   .row
-    color: var(--color-gray)
+    color: var(--tv-gray)
 
     &.beat .index
-      color: var(--color-gray)
+      color: var(--tv-bright-cyan)
 
     &.current
-      color: var(--color-cream)
-      background-color: var(--color-panel-background-bright)
-      box-shadow: inset 0 1px var(--color-shadow), inset 0 -1px var(--color-shadow)
+      color: var(--tv-yellow)
+      background-color: var(--tv-blue)
+      box-shadow: inset 0 1px var(--tv-cyan), inset 0 -1px var(--tv-cyan)
 
       .cell
-        color: var(--color-white)
+        color: var(--tv-white)
 
       .cell.empty
-        color: var(--color-gray)
+        color: var(--tv-gray)
 
     .index
       padding-left: 0.75em
-      color: var(--color-shadow)
+      color: var(--tv-cyan)
 
     .cell
       text-align: center
 
       &.empty
-        color: var(--color-shadow)
+        color: var(--tv-dark-blue)

@@ -3,9 +3,8 @@ component
   display: flex
   flex-direction: column
   min-height: 0
-  background-color: var(--color-panel-background)
-  border: 1px solid var(--color-panel-background-bright)
-  border-radius: 4px
+  background-color: var(--tv-dark-blue)
+  border: 1px solid var(--tv-cyan)
   overflow: hidden
 
   .head
@@ -13,8 +12,9 @@ component
     height: 1.5em
     line-height: 1.5em
     font-size: 0.75em
-    color: var(--color-dark)
-    border-bottom: 1px solid var(--color-panel-background-bright)
+    color: var(--tv-black)
+    background-color: var(--tv-cyan)
+    border-bottom: 1px solid var(--tv-bright-cyan)
 
   .list
     flex: 1 1 auto
@@ -28,8 +28,8 @@ component
     padding: 0 0.75em
     height: 1.5em
     line-height: 1.5em
-    color: var(--color-dark)
+    color: var(--tv-gray)
 
     &.current
-      color: var(--color-cream)
-      background-color: var(--color-panel-background-bright)
+      color: var(--tv-yellow)
+      background-color: var(--tv-blue)

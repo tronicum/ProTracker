@@ -9,37 +9,39 @@ component
     flex-wrap: wrap
     align-items: center
     gap: 0.5rem
-    padding: 0.375rem 0.625rem
-    background-color: var(--color-panel-background)
-    border: 1px solid var(--color-panel-background-bright)
-    border-radius: 4px
+    min-height: 2rem
+    padding: 0.25rem 0.375rem
+    color: var(--tv-black)
+    background-color: var(--tv-cyan)
+    border: 1px solid var(--tv-bright-cyan)
 
   .brand
-    color: var(--color-cream)
+    color: var(--tv-yellow)
+    background-color: var(--tv-dark-blue)
     font-weight: 500
-    margin-right: 0.25rem
+    padding: 0.25rem 0.5rem
+    margin-right: 0.125rem
 
   .info
     margin-left: auto
     display: flex
     gap: 1rem
-    color: var(--color-dark)
+    color: var(--tv-black)
 
     b
       font-weight: 500
-      color: var(--color-cream)
+      color: var(--tv-dark-blue)
 
   .repo
-    color: var(--color-dark)
+    color: var(--tv-dark-blue)
     text-decoration: none
-    border-bottom: 1px solid var(--color-dark)
+    border-bottom: 1px solid currentColor
 
     &:hover
-      color: var(--color-cream)
-      border-bottom-color: var(--color-cream)
+      color: var(--tv-white)
 
   .error
-    color: var(--color-red)
+    color: var(--tv-yellow)
     white-space: pre-wrap
 
     &:empty
