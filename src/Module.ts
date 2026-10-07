@@ -39,6 +39,18 @@ export class Module {
     // data as garbage instead of rejecting it.
     static readonly MULTI_CHANNEL_TAGS = /^(?:[0-9]{1,2}CHN?|OCTA|CD81|TDZ[1-4]|FA0[4-8])$/
 
+    // Entirely different tracker formats (not MOD variants at all, so they carry none of the
+    // TAGS/MULTI_CHANNEL_TAGS markers at offset 1080) that would otherwise silently fall through
+    // to pad15to31(), which unconditionally stamps "M.K." onto anything >= 600 bytes it doesn't
+    // already recognize - misinterpreting their real headers/patterns as garbage 15-sample MOD
+    // data instead of rejecting them. Checked by magic bytes at each format's own fixed offset.
+    static readonly FOREIGN_SIGNATURES: ReadonlyArray<{name: string, offset: int, bytes: string}> = [
+        {name: "FastTracker II XM", offset: 0, bytes: "Extended Module: "},
+        {name: "Impulse Tracker IT", offset: 0, bytes: "IMPM"},
+        {name: "Scream Tracker 3 S3M", offset: 44, bytes: "SCRM"},
+        {name: "MultiTracker MTM", offset: 0, bytes: "MTM"}
+    ]
+
     static tagOf(d: Uint8Array): string {
         return d.length >= 1084 ? String.fromCharCode(d[1080], d[1081], d[1082], d[1083]) : ""
     }
@@ -47,8 +59,22 @@ export class Module {
         return Module.TAGS.includes(Module.tagOf(d))
     }
 
+    static foreignFormatOf(d: Uint8Array): string | null {
+        for (const sig of Module.FOREIGN_SIGNATURES) {
+            if (d.length < sig.offset + sig.bytes.length) {continue}
+            let matches = true
+            for (let i = 0; i < sig.bytes.length; i++) {
+                if (d[sig.offset + i] !== sig.bytes.charCodeAt(i)) {matches = false; break}
+            }
+            if (matches) {return sig.name}
+        }
+        return null
+    }
+
     /** Accepts M.K. files and old 15 instrument SoundTracker files (padded to 31, as ProTracker does). */
     static parse(input: Uint8Array): Module {
+        const foreign = Module.foreignFormatOf(input)
+        if (foreign !== null) {throw new Error(`${foreign} module: not a ProTracker-compatible format`)}
         if (!Module.isProTracker(input) && Module.MULTI_CHANNEL_TAGS.test(Module.tagOf(input))) {
             throw new Error(`${Module.tagOf(input)} module: Paula only has 4 channels, not supported`)
         }
