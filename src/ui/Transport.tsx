@@ -9,7 +9,7 @@ import {ModuleSelect} from "@/ui/components/ModuleSelect"
 
 const className = Html.adoptStyleSheet(css, "Transport")
 
-export type ViewMode = "tracker" | "visualizer"
+export type ViewMode = "tracker" | "visualizer" | "ascii3d"
 
 type Construct = {
     lifecycle: Lifecycle
@@ -26,7 +26,7 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
     const stopped = lifecycle.own(new DefaultObservableValue(true))
     lifecycle.own(player.playing.catchupAndSubscribe(owner => stopped.setValue(!owner.getValue())))
     const fileInput: HTMLInputElement = (
-        <input type="file" accept=".mod,.MOD" hidden=""
+        <input type="file" accept=".mod,.MOD" hidden={true}
                onchange={async () => {
                    const file = fileInput.files?.[0]
                    if (isDefined(file)) {player.load(new Uint8Array(await file.arrayBuffer()))}
@@ -40,12 +40,18 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
         <button className="mode" type="button" aria-pressed="false"
                 onclick={() => viewMode.setValue("visualizer")}>ASCII view</button>
     )
+    const ascii3dButton: HTMLButtonElement = (
+        <button className="mode" type="button" aria-pressed="false"
+                onclick={() => viewMode.setValue("ascii3d")}>3D ASCII</button>
+    )
     lifecycle.own(viewMode.catchupAndSubscribe(owner => {
-        const tracker = owner.getValue() === "tracker"
-        trackerButton.disabled = tracker
-        trackerButton.setAttribute("aria-pressed", String(tracker))
-        visualizerButton.disabled = !tracker
-        visualizerButton.setAttribute("aria-pressed", String(!tracker))
+        const mode = owner.getValue()
+        trackerButton.disabled = mode === "tracker"
+        trackerButton.setAttribute("aria-pressed", String(mode === "tracker"))
+        visualizerButton.disabled = mode === "visualizer"
+        visualizerButton.setAttribute("aria-pressed", String(mode === "visualizer"))
+        ascii3dButton.disabled = mode === "ascii3d"
+        ascii3dButton.setAttribute("aria-pressed", String(mode === "ascii3d"))
     }))
     lifecycle.own(player.error.catchupAndSubscribe(owner => error.value = owner.getValue()))
     lifecycle.own(player.module.catchupAndSubscribe(option => title.value = option.mapOr(module => module.title || "(untitled)", "")))
@@ -60,6 +66,7 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
                 <span className="brand">ProTracker 2.3A</span>
                 {trackerButton}
                 {visualizerButton}
+                {ascii3dButton}
                 <Button lifecycle={lifecycle} label="Play" primary enabled={stopped}
                         onClick={() => player.play().catch(reason => player.error.setValue(String(reason)))}/>
                 <Button lifecycle={lifecycle} label="Stop" enabled={player.playing} onClick={() => player.stop()}/>
