@@ -9,7 +9,7 @@ import {ModuleSelect} from "@/ui/components/ModuleSelect"
 
 const className = Html.adoptStyleSheet(css, "Transport")
 
-export type ViewMode = "tracker" | "visualizer" | "ascii3d"
+export type ViewMode = "tracker" | "visualizer" | "ascii3d" | "webgl"
 
 type Construct = {
     lifecycle: Lifecycle
@@ -58,6 +58,10 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
         <button className="mode" type="button" aria-pressed="false"
                 onclick={() => viewMode.setValue("ascii3d")}>3D ASCII</button>
     )
+    const webglButton: HTMLButtonElement = (
+        <button className="mode" type="button" aria-pressed="false"
+                onclick={() => viewMode.setValue("webgl")}>WebGL</button>
+    )
     lifecycle.own(viewMode.catchupAndSubscribe(owner => {
         const mode = owner.getValue()
         trackerButton.disabled = mode === "tracker"
@@ -66,6 +70,8 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
         visualizerButton.setAttribute("aria-pressed", String(mode === "visualizer"))
         ascii3dButton.disabled = mode === "ascii3d"
         ascii3dButton.setAttribute("aria-pressed", String(mode === "ascii3d"))
+        webglButton.disabled = mode === "webgl"
+        webglButton.setAttribute("aria-pressed", String(mode === "webgl"))
     }))
     lifecycle.own(player.error.catchupAndSubscribe(owner => error.value = owner.getValue()))
     lifecycle.own(player.module.catchupAndSubscribe(option => title.value = option.mapOr(module => module.title || "(untitled)", "")))
@@ -81,6 +87,7 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
                 {trackerButton}
                 {visualizerButton}
                 {ascii3dButton}
+                {webglButton}
                 <Button lifecycle={lifecycle} label="Play" primary enabled={stopped}
                         onClick={() => player.play().catch(reason => player.error.setValue(String(reason)))}/>
                 <Button lifecycle={lifecycle} label="Stop" enabled={player.playing} onClick={() => player.stop()}/>
