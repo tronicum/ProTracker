@@ -61,14 +61,63 @@ const buildSierpinskiTetrahedron = (): ReadonlyArray<Triangle> => {
     return triangles.map(tri => tri.map(v => [v[0] / maxLength, v[1] / maxLength, v[2] / maxLength] as Vec3) as unknown as Triangle)
 }
 
-export type ShapeId = "icosahedron" | "fractal"
-const SHAPES: Record<ShapeId, ReadonlyArray<Triangle>> = {
-    icosahedron: buildIcosahedron(),
-    fractal: buildSierpinskiTetrahedron()
+const subdivideSphereTriangle = (triangle: Triangle, depth: number): ReadonlyArray<Triangle> => {
+    if (depth === 0) {return [triangle]}
+    const [a, b, c] = triangle
+    const ab = normalizeVertex(mid(a, b))
+    const bc = normalizeVertex(mid(b, c))
+    const ca = normalizeVertex(mid(c, a))
+    return [
+        ...subdivideSphereTriangle([a, ab, ca], depth - 1),
+        ...subdivideSphereTriangle([ab, b, bc], depth - 1),
+        ...subdivideSphereTriangle([ca, bc, c], depth - 1),
+        ...subdivideSphereTriangle([ab, bc, ca], depth - 1)
+    ]
 }
+const buildGlobe = (): ReadonlyArray<Triangle> => buildIcosahedron().flatMap(triangle => subdivideSphereTriangle(triangle, 1))
+
+const cuboidTriangles = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number): ReadonlyArray<Triangle> => {
+    const a: Vec3 = [x0, y0, z0], b: Vec3 = [x1, y0, z0], c: Vec3 = [x1, y1, z0], d: Vec3 = [x0, y1, z0]
+    const e: Vec3 = [x0, y0, z1], f: Vec3 = [x1, y0, z1], g: Vec3 = [x1, y1, z1], h: Vec3 = [x0, y1, z1]
+    return [
+        [a, b, c], [a, c, d], // back
+        [f, e, h], [f, h, g], // front
+        [e, a, d], [e, d, h], // left
+        [b, f, g], [b, g, c], // right
+        [d, c, g], [d, g, h], // top
+        [e, f, b], [e, b, a]  // bottom
+    ]
+}
+// A single row of audio-driven bars, like a classic 3D spectrum-analyzer display.
+const EQUALIZER_BARS = 14
+const buildEqualizer = (spectrum: Uint8Array, reactivity: number): ReadonlyArray<Triangle> => {
+    const halfWidth = (2 / EQUALIZER_BARS) * 0.4
+    const bars: Triangle[] = []
+    for (let i = 0; i < EQUALIZER_BARS; i++) {
+        const cx = -1 + (i + 0.5) * (2 / EQUALIZER_BARS)
+        const bin = 8 + i * 8
+        const amplitude = Math.min(1, (spectrum[bin] / 255) * (0.6 + 0.9 * reactivity))
+        const top = -1 + amplitude * 2.2
+        bars.push(...cuboidTriangles(cx - halfWidth, cx + halfWidth, -1, top, -halfWidth, halfWidth))
+    }
+    return bars
+}
+
+export type ShapeId = "icosahedron" | "fractal" | "globe" | "equalizer"
+const SHAPES: Record<Exclude<ShapeId, "equalizer">, ReadonlyArray<Triangle>> = {
+    icosahedron: buildIcosahedron(),
+    fractal: buildSierpinskiTetrahedron(),
+    globe: buildGlobe()
+}
+// Only convex, consistently-wound shapes benefit from backface culling; the
+// equalizer's many independent boxes aren't guaranteed consistent winding,
+// so it relies purely on the depth test instead.
+const SHAPE_CULL: Record<ShapeId, boolean> = {icosahedron: true, fractal: true, globe: true, equalizer: false}
 export const SHAPE_OPTIONS: ReadonlyArray<{ id: ShapeId, label: string }> = [
     {id: "icosahedron", label: "Icosahedron"},
-    {id: "fractal", label: "Sierpinski Fractal"}
+    {id: "fractal", label: "Sierpinski Fractal"},
+    {id: "globe", label: "Globe"},
+    {id: "equalizer", label: "3D Equalizer"}
 ]
 
 export type ThemeId = "classic" | "matrix" | "amber"
@@ -185,8 +234,10 @@ const draw = (screen: HTMLPreElement, size: SizePreset, spectrum: Uint8Array, pl
     const cy = plotTop + plotHeight / 2
     const seconds = time * 0.001
     const spin = speedBase * (0.25 + (bass + audio.punch * 1.5) * 1.4 * reactivity)
-    const angleX = seconds * 0.6 * spin
-    const angleY = seconds * 0.9 * spin
+    // The equalizer is a bar chart, not a solid to tumble — a fixed tilt plus a slow yaw
+    // keeps it readable while still feeling 3D; other shapes get the full reactive spin.
+    const angleX = shapeId === "equalizer" ? 0.5 : seconds * 0.6 * spin
+    const angleY = shapeId === "equalizer" ? seconds * 0.15 * speedBase : seconds * 0.9 * spin
     const dist = 3.0
     const pulse = 1 + (bass * 0.3 + audio.punch * 0.4) * reactivity
     const scale = Math.min(plotWidth * 0.42, plotHeight * 0.78) * pulse
@@ -216,7 +267,8 @@ const draw = (screen: HTMLPreElement, size: SizePreset, spectrum: Uint8Array, pl
         }
     }
 
-    const baseTriangles = SHAPES[shapeId]
+    const cull = SHAPE_CULL[shapeId]
+    const baseTriangles = shapeId === "equalizer" ? buildEqualizer(spectrum, reactivity) : SHAPES[shapeId]
     const spikeEnabled = shapeId === "icosahedron"
     const camTriangles = baseTriangles.map((triangle, triIndex) => {
         return triangle.map((v, vertIndex) => {
@@ -240,7 +292,7 @@ const draw = (screen: HTMLPreElement, size: SizePreset, spectrum: Uint8Array, pl
             const avgZ = (a[2] + b[2] + c[2]) / 3
             return {index, normal, avgZ}
         })
-        .filter(item => item.normal[2] > 0)
+        .filter(item => !cull || item.normal[2] > 0)
         .sort((p, q) => p.avgZ - q.avgZ)
 
     for (const item of items) {
