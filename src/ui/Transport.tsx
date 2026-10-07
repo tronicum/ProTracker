@@ -1,7 +1,7 @@
 import css from "./Transport.sass?inline"
 import {DefaultObservableValue, isDefined, Lifecycle} from "@opendaw/lib-std"
 import {createElement, Inject} from "@opendaw/lib-jsx"
-import {AnimationFrame, Html} from "@opendaw/lib-dom"
+import {AnimationFrame, Events, Html} from "@opendaw/lib-dom"
 import {Player} from "@/Player"
 import {Button} from "@/ui/components/Button"
 import {Checkbox} from "@/ui/components/Checkbox"
@@ -10,6 +10,18 @@ import {ModuleSelect} from "@/ui/components/ModuleSelect"
 const className = Html.adoptStyleSheet(css, "Transport")
 
 export type ViewMode = "tracker" | "visualizer" | "ascii3d" | "webgl"
+const VIEW_MODES: ReadonlyArray<ViewMode> = ["tracker", "visualizer", "ascii3d", "webgl"]
+
+// DOS-tracker-style elapsed playback clock: mm:ss, rolling over past 99:59 rather than growing wider.
+const formatElapsed = (ms: number): string => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const minutes = Math.min(99, Math.floor(totalSeconds / 60))
+    const seconds = totalSeconds % 60
+    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+}
+
+const isTypingTarget = (target: EventTarget | null): boolean =>
+    target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement
 
 type Construct = {
     lifecycle: Lifecycle
@@ -22,6 +34,7 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
     const title = Inject.value("")
     const speed = Inject.value("")
     const timer = Inject.value("")
+    const elapsed = Inject.value("00:00")
     const error = Inject.value("")
     const stopped = lifecycle.own(new DefaultObservableValue(true))
     lifecycle.own(player.playing.catchupAndSubscribe(owner => stopped.setValue(!owner.getValue())))
@@ -79,6 +92,21 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
         const status = player.currentStatus
         speed.value = isDefined(status) ? `${status.speed} / ${status.tempo}` : ""
         timer.value = isDefined(status) ? `${status.tickHz.toFixed(2)} Hz` : ""
+        elapsed.value = formatElapsed(player.elapsedMs)
+    }))
+    lifecycle.own(Events.subscribe(window, "keydown", event => {
+        const keyboardEvent = event as KeyboardEvent
+        if (isTypingTarget(keyboardEvent.target)) {return}
+        if (keyboardEvent.key === " ") {
+            keyboardEvent.preventDefault()
+            if (player.playing.getValue()) {
+                player.stop()
+            } else {
+                player.play().catch(reason => player.error.setValue(String(reason)))
+            }
+        } else if (keyboardEvent.key >= "1" && keyboardEvent.key <= "4") {
+            viewMode.setValue(VIEW_MODES[Number(keyboardEvent.key) - 1])
+        }
     }))
     return (
         <div className={className}>
@@ -106,6 +134,7 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
                     <b>{title}</b>
                     <span>{speed}</span>
                     <span>{timer}</span>
+                    <span className="elapsed" title="Elapsed playback time">{elapsed}</span>
                 </span>
                 <a className="repo" href="https://github.com/andremichelle/ProTracker" target="_blank"
                    rel="noopener" title="Source on GitHub">GitHub</a>
