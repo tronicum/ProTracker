@@ -47,6 +47,22 @@ export class Player {
         this.load(new Uint8Array(await response.arrayBuffer()))
     }
 
+    /** Fetches an arbitrary, absolute URL (as opposed to loadUrl, which is for the app's own bundled assets). */
+    async loadFromUrl(url: string): Promise<void> {
+        let response: globalThis.Response
+        try {
+            response = await fetch(url)
+        } catch (reason) {
+            this.error.setValue(`${url}: ${String(reason)}`)
+            return
+        }
+        if (!response.ok) {
+            this.error.setValue(`${url}: ${response.status}`)
+            return
+        }
+        this.load(new Uint8Array(await response.arrayBuffer()))
+    }
+
     load(bytes: Uint8Array): void {
         const result = tryCatch(() => Module.parse(bytes))
         if (result.status === "failure") {

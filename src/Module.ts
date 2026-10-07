@@ -32,13 +32,26 @@ export const cellText = (cell: Cell): string =>
 /** A 31 instrument ProTracker module as the replayer sees it. */
 export class Module {
     static readonly TAGS = ["M.K.", "M!K!", "FLT4", "4CHN"]
+    // Tags used by >4-channel formats (6CHN, 8CHN, 10CH..32CH, OCTA, CD81, TDZ[1-4], FA0[4-8]).
+    // Paula only has 4 DMA channels, and the real PT-CIAPlay.s routine this app emulates has no
+    // code path for more - without this check, an unrecognized tag falls through to pad15to31(),
+    // which assumes a 15-sample layout and would silently misinterpret the real pattern/sample
+    // data as garbage instead of rejecting it.
+    static readonly MULTI_CHANNEL_TAGS = /^(?:[0-9]{1,2}CHN?|OCTA|CD81|TDZ[1-4]|FA0[4-8])$/
+
+    static tagOf(d: Uint8Array): string {
+        return d.length >= 1084 ? String.fromCharCode(d[1080], d[1081], d[1082], d[1083]) : ""
+    }
 
     static isProTracker(d: Uint8Array): boolean {
-        return d.length >= 1084 && Module.TAGS.includes(String.fromCharCode(d[1080], d[1081], d[1082], d[1083]))
+        return Module.TAGS.includes(Module.tagOf(d))
     }
 
     /** Accepts M.K. files and old 15 instrument SoundTracker files (padded to 31, as ProTracker does). */
     static parse(input: Uint8Array): Module {
+        if (!Module.isProTracker(input) && Module.MULTI_CHANNEL_TAGS.test(Module.tagOf(input))) {
+            throw new Error(`${Module.tagOf(input)} module: Paula only has 4 channels, not supported`)
+        }
         const d = Module.isProTracker(input) ? input : Module.pad15to31(input)
         if (!Module.isProTracker(d)) {throw new Error("not a 4 channel ProTracker module")}
         const title = String.fromCharCode(...d.subarray(0, 20)).replace(/\0.*$/, "").trimEnd()
