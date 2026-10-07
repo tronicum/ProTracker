@@ -178,7 +178,7 @@ const draw = (screen: HTMLPreElement, size: SizePreset, spectrum: Uint8Array, pl
 
     const status = player.currentStatus
     const state = player.playing.getValue() ? "PLAYING" : "STANDBY"
-    write(0, 2, ` PROTRACKER 2.3A  /  BB-STYLE ASCII 3D  /  ${state} `)
+    write(0, 2, ` PROTRACKER+ 4.2B  /  BB-STYLE ASCII 3D  /  ${state} `)
 
     const plotTop = 1
     const plotBottom = rows - 2

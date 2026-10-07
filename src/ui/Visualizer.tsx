@@ -150,7 +150,7 @@ const draw = (screen: HTMLPreElement, size: SizePreset, spectrum: Uint8Array, pl
     const row = isDefined(status) ? status.row.toString().padStart(2, "0") : "--"
     const state = player.playing.getValue() ? "PLAYING" : "STANDBY"
     const modeLabel = MODE_OPTIONS.find(option => option.id === modeId)?.label ?? "Spectrum"
-    write(1, 2, ` PROTRACKER 2.3A  /  PAULA ASCII ${modeLabel.toUpperCase()} `)
+    write(1, 2, ` PROTRACKER+ 4.2B  /  PAULA ASCII ${modeLabel.toUpperCase()} `)
     write(2, 2, ` ${state}  POS ${position}  PAT ${pattern}  ROW ${row} `)
     write(3, 0, `+${"-".repeat(columns - 2)}+`)
 

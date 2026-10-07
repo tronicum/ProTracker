@@ -77,7 +77,7 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
     return (
         <div className={className}>
             <div className="line">
-                <span className="brand">ProTracker 2.3A</span>
+                <span className="brand">ProTracker+ Version 4.2B</span>
                 {trackerButton}
                 {visualizerButton}
                 {ascii3dButton}
