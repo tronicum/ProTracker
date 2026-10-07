@@ -9,8 +9,8 @@ import {ModuleSelect} from "@/ui/components/ModuleSelect"
 
 const className = Html.adoptStyleSheet(css, "Transport")
 
-export type ViewMode = "tracker" | "visualizer" | "ascii3d" | "webgl" | "vga"
-const VIEW_MODES: ReadonlyArray<ViewMode> = ["tracker", "visualizer", "ascii3d", "webgl", "vga"]
+export type ViewMode = "tracker" | "visualizer" | "ascii3d" | "webgl"
+const VIEW_MODES: ReadonlyArray<ViewMode> = ["tracker", "visualizer", "ascii3d", "webgl"]
 
 // DOS-tracker-style elapsed playback clock: mm:ss, rolling over past 99:59 rather than growing wider.
 const formatElapsed = (ms: number): string => {
@@ -75,10 +75,6 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
         <button className="mode" type="button" aria-pressed="false"
                 onclick={() => viewMode.setValue("webgl")}>WebGL</button>
     )
-    const vgaButton: HTMLButtonElement = (
-        <button className="mode" type="button" aria-pressed="false"
-                onclick={() => viewMode.setValue("vga")}>VGA</button>
-    )
     lifecycle.own(viewMode.catchupAndSubscribe(owner => {
         const mode = owner.getValue()
         trackerButton.disabled = mode === "tracker"
@@ -89,8 +85,6 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
         ascii3dButton.setAttribute("aria-pressed", String(mode === "ascii3d"))
         webglButton.disabled = mode === "webgl"
         webglButton.setAttribute("aria-pressed", String(mode === "webgl"))
-        vgaButton.disabled = mode === "vga"
-        vgaButton.setAttribute("aria-pressed", String(mode === "vga"))
     }))
     lifecycle.own(player.error.catchupAndSubscribe(owner => error.value = owner.getValue()))
     lifecycle.own(player.module.catchupAndSubscribe(option => title.value = option.mapOr(module => module.title || "(untitled)", "")))
@@ -110,7 +104,7 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
             } else {
                 player.play().catch(reason => player.error.setValue(String(reason)))
             }
-        } else if (keyboardEvent.key >= "1" && keyboardEvent.key <= "5") {
+        } else if (keyboardEvent.key >= "1" && keyboardEvent.key <= "4") {
             viewMode.setValue(VIEW_MODES[Number(keyboardEvent.key) - 1])
         }
     }))
@@ -122,7 +116,6 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
                 {visualizerButton}
                 {ascii3dButton}
                 {webglButton}
-                {vgaButton}
                 <Button lifecycle={lifecycle} label="Play" primary enabled={stopped}
                         onClick={() => player.play().catch(reason => player.error.setValue(String(reason)))}/>
                 <Button lifecycle={lifecycle} label="Stop" enabled={player.playing} onClick={() => player.stop()}/>

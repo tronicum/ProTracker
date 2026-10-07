@@ -10,7 +10,6 @@ import {Channels} from "@/ui/Channels"
 import {Visualizer} from "@/ui/Visualizer"
 import {Visualizer3D} from "@/ui/Visualizer3D"
 import {VisualizerWebGL} from "@/ui/VisualizerWebGL"
-import {VisualizerVGA} from "@/ui/VisualizerVGA"
 
 const className = Html.adoptStyleSheet(css, "App")
 
@@ -34,14 +33,12 @@ export const App = ({lifecycle, player, initialModule}: Construct) => {
     const visualizerView: HTMLDivElement = <Visualizer lifecycle={lifecycle} player={player}/>
     const ascii3dView: HTMLDivElement = <Visualizer3D lifecycle={lifecycle} player={player}/>
     const webglView: HTMLDivElement = <VisualizerWebGL lifecycle={lifecycle} player={player}/>
-    const vgaView: HTMLDivElement = <VisualizerVGA lifecycle={lifecycle} player={player}/>
     lifecycle.own(viewMode.catchupAndSubscribe(owner => {
         const mode = owner.getValue()
         trackerView.hidden = mode !== "tracker"
         visualizerView.hidden = mode !== "visualizer"
         ascii3dView.hidden = mode !== "ascii3d"
         webglView.hidden = mode !== "webgl"
-        vgaView.hidden = mode !== "vga"
     }))
     const element: HTMLElement = (
         <div className={className}>
@@ -51,7 +48,6 @@ export const App = ({lifecycle, player, initialModule}: Construct) => {
                 {visualizerView}
                 {ascii3dView}
                 {webglView}
-                {vgaView}
             </div>
         </div>
     )

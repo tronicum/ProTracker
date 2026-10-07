@@ -10,6 +10,8 @@ import {RenderPass} from "three/addons/postprocessing/RenderPass.js"
 import {UnrealBloomPass} from "three/addons/postprocessing/UnrealBloomPass.js"
 import {OutputPass} from "three/addons/postprocessing/OutputPass.js"
 import {OrbitControls} from "three/addons/controls/OrbitControls.js"
+import {ParametricGeometry} from "three/addons/geometries/ParametricGeometry.js"
+import {mobius} from "three/addons/geometries/ParametricFunctions.js"
 
 const className = Html.adoptStyleSheet(css, "VisualizerWebGL")
 
@@ -28,7 +30,7 @@ type Construct = {
 const dummy = new THREE.Object3D()
 const barColor = new THREE.Color()
 
-type CoreShape = "icosahedron" | "torusKnot" | "octahedron" | "dodecahedron" | "tetrahedron"
+type CoreShape = "icosahedron" | "torusKnot" | "octahedron" | "dodecahedron" | "tetrahedron" | "mobius"
 
 type Preset = {
     name: string
@@ -37,11 +39,12 @@ type Preset = {
     hueSpread: number // how much of the wheel the grid/stars sweep across
     hueSpeed: number  // how fast the sweep drifts over time
     tint: number      // multiplies the floor grid + starfield's baked-in vertex colors
-    planets?: boolean // swap the wireframe core for a little orbiting solar system
+    planets?: boolean // swap the wireframe core (and the bar grid) for a little orbiting solar system
+    vga?: boolean     // swap everything for the VGA tribute screen, floating as a real plane in the scene
 }
 
-// Eleven distinct looks over the same scene: different centerpiece shape and color
-// treatment, picked from a dropdown - cheap to add more without rebuilding geometry.
+// Structurally distinct "themes" (shape/layout), each with its own color "variant" on top
+// (hueBase/hueSpread/hueSpeed/tint) - cheap to add more of either without rebuilding anything.
 const PRESETS: ReadonlyArray<Preset> = [
     {name: "Spectrum Grid", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.015, tint: 0xffffff},
     {name: "Tunnel Knot", shape: "torusKnot", hueBase: 0.78, hueSpread: 0.25, hueSpeed: 0.02, tint: 0xdd88ff},
@@ -53,10 +56,60 @@ const PRESETS: ReadonlyArray<Preset> = [
     {name: "Neon Grid", shape: "octahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.05, tint: 0xffffff},
     {name: "Mono Cyan", shape: "icosahedron", hueBase: 0.5, hueSpread: 0.02, hueSpeed: 0.004, tint: 0x33ffee},
     {name: "Candy", shape: "dodecahedron", hueBase: 0.85, hueSpread: 0.6, hueSpeed: 0.03, tint: 0xff99dd},
-    {name: "Orbital System", shape: "icosahedron", hueBase: 0.58, hueSpread: 0.5, hueSpeed: 0.01, tint: 0xffffff, planets: true}
+    {name: "Möbius Loop", shape: "mobius", hueBase: 0.72, hueSpread: 0.4, hueSpeed: 0.015, tint: 0xffffff},
+    {name: "Orbital System", shape: "icosahedron", hueBase: 0.58, hueSpread: 0.5, hueSpeed: 0.01, tint: 0xffffff, planets: true},
+    {name: "VGA Tribute", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.01, tint: 0xffffff, vga: true}
 ]
 
 const PLANET_COUNT = 6
+
+// ---- VGA tribute screen: a tiny 320x200 framebuffer, drawn with a real canvas 2D context and
+// mapped as a texture onto an actual plane inside the 3D scene (not a flat DOM overlay) - so it
+// sits among the stars/floor grid like a floating monitor, and can tumble in 3D (see the "balloon"
+// easter egg below) without needing any special-cased rendering path.
+const FB_WIDTH = 320
+const FB_HEIGHT = 200
+
+const VGA_PALETTE = [
+    "#000000", "#0000AA", "#00AA00", "#00AAAA",
+    "#AA0000", "#AA00AA", "#AA5500", "#AAAAAA",
+    "#555555", "#5555FF", "#55FF55", "#55FFFF",
+    "#FF5555", "#FF55FF", "#FFFF55", "#FFFFFF"
+] as const
+
+const VGA_BOUNCE_COLORS = [9, 10, 11, 12, 13, 14, 15, 3, 2]
+
+// Entirely original wording - a lighthearted nod to VGA-Copy, a real 1990s MS-DOS floppy-disk
+// utility by Thomas Mönkemeier known for its VGA-mode interface, not a reproduction of its actual
+// screens/code. No demoscene group names, logos, or real scrolltext are referenced or paraphrased.
+const VGA_SCROLLTEXT =
+    "   WELCOME TO THE PROTRACKER+ 4.2B VGA TRIBUTE SCREEN ...   " +
+    "A SMALL ORIGINAL HOMAGE TO THE EARLY-1990S MS-DOS ERA, " +
+    "AND ESPECIALLY TO VGA-COPY, THOMAS MOENKEMEIER'S BELOVED FLOPPY-DISK UTILITY " +
+    "THAT TAUGHT A GENERATION WHAT A VGA SCREEN COULD LOOK LIKE ...   " +
+    "BIG RESPECT TO EVERY CODER, COMPOSER AND SYSOP FROM THAT ERA ...   " +
+    "LONG LIVE THE FLOPPY DISK, THE TRACKER AND THE SCENE ...   " +
+    "THANKS FOR LISTENING ON PROTRACKER+ - NOW GO MAKE SOME NOISE ...   "
+
+type VgaBounce = {x: number, y: number, vx: number, vy: number, colorIndex: number, pulse: number}
+
+const drawVgaDiamond = (ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, color: string): void => {
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.moveTo(cx, cy - radius)
+    ctx.lineTo(cx + radius, cy)
+    ctx.lineTo(cx, cy + radius)
+    ctx.lineTo(cx - radius, cy)
+    ctx.closePath()
+    ctx.fill()
+}
+
+const formatElapsed = (ms: number): string => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const minutes = Math.min(99, Math.floor(totalSeconds / 60))
+    const seconds = totalSeconds % 60
+    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+}
 
 export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const canvasHost: HTMLDivElement = <div className="canvas-host"/>
@@ -191,7 +244,8 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         torusKnot: new THREE.TorusKnotGeometry(1, 0.34, 120, 16),
         octahedron: new THREE.OctahedronGeometry(1.6, 1),
         dodecahedron: new THREE.DodecahedronGeometry(1.4, 0),
-        tetrahedron: new THREE.TetrahedronGeometry(1.7, 1)
+        tetrahedron: new THREE.TetrahedronGeometry(1.7, 1),
+        mobius: new ParametricGeometry(mobius, 120, 24)
     }
     const coreMaterial = new THREE.MeshBasicMaterial({color: 0x66ffe0, wireframe: true, transparent: true, opacity: 0.85})
     const core = new THREE.Mesh(coreGeometries.icosahedron, coreMaterial)
@@ -217,6 +271,56 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         })
     planetGroup.position.y = 3.2
     scene.add(planetGroup)
+
+    // VGA tribute plane: a real textured mesh in the scene, not a DOM overlay.
+    const vgaCanvas = document.createElement("canvas")
+    vgaCanvas.width = FB_WIDTH
+    vgaCanvas.height = FB_HEIGHT
+    const vgaCtx = vgaCanvas.getContext("2d")
+    const vgaTexture = new THREE.CanvasTexture(vgaCanvas)
+    vgaTexture.magFilter = THREE.NearestFilter
+    vgaTexture.minFilter = THREE.NearestFilter
+    vgaTexture.generateMipmaps = false
+    const vgaGeometry = new THREE.PlaneGeometry(6.4, 4)
+    const vgaMaterial = new THREE.MeshBasicMaterial({map: vgaTexture})
+    const vgaPlane = new THREE.Mesh(vgaGeometry, vgaMaterial)
+    const vgaRestPosition = new THREE.Vector3(0, 3.2, 0)
+    vgaPlane.position.copy(vgaRestPosition)
+    vgaPlane.visible = false
+    scene.add(vgaPlane)
+    const vgaBounce: VgaBounce = {x: FB_WIDTH / 2, y: FB_HEIGHT / 2 + 20, vx: 1.3, vy: 1.0, colorIndex: 0, pulse: 0}
+    const vgaCycle = {value: 0}
+
+    // Easter egg: "hanging on a balloon" - most of the time the screen just sits flat and still,
+    // but on a random 0-100 second timer (or a direct click on the screen) it breaks loose and
+    // floats/tumbles in full 3D for a while, revealing it was a real plane in the scene all along.
+    const scheduleNextBalloon = (now: number): number => now + Math.random() * 100_000
+    let vgaFlipActive = false
+    let vgaFlipStart = 0
+    let vgaFlipEnd = 0
+    let vgaNextFlipAt = scheduleNextBalloon(performance.now())
+    const triggerVgaFlip = (now: number): void => {
+        vgaFlipActive = true
+        vgaFlipStart = now
+        vgaFlipEnd = now + 12_000 + Math.random() * 8_000
+    }
+    const raycaster = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
+    let pointerDownAt: {x: number, y: number} | null = null
+    renderer.domElement.addEventListener("pointerdown", event => {
+        pointerDownAt = {x: event.clientX, y: event.clientY}
+    })
+    renderer.domElement.addEventListener("pointerup", event => {
+        if (!activePreset.vga || pointerDownAt === null) {pointerDownAt = null; return}
+        const moved = Math.hypot(event.clientX - pointerDownAt.x, event.clientY - pointerDownAt.y)
+        pointerDownAt = null
+        if (moved > 6) {return} // a drag (orbiting the camera), not a click
+        const rect = renderer.domElement.getBoundingClientRect()
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+        raycaster.setFromCamera(pointer, camera)
+        if (raycaster.intersectObject(vgaPlane).length > 0) {triggerVgaFlip(performance.now())}
+    })
 
     const starGeometry = new THREE.BufferGeometry()
     const starPositions = new Float32Array(STAR_COUNT * 3)
@@ -255,10 +359,16 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const applyPreset = (preset: Preset): void => {
         activePreset = preset
         core.geometry = coreGeometries[preset.shape]
-        core.visible = !preset.planets
+        core.visible = !preset.planets && !preset.vga
+        bars.visible = !preset.vga
         planetGroup.visible = preset.planets === true
+        vgaPlane.visible = preset.vga === true
         floorTint.set(preset.tint)
         starTint.set(preset.tint)
+        if (preset.vga) {
+            vgaNextFlipAt = scheduleNextBalloon(performance.now())
+            vgaFlipActive = false
+        }
     }
     applyPreset(PRESETS[0])
     presetSelect.addEventListener("change", () => {
@@ -277,23 +387,25 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         const reactivityValueNow = reactivity.getValue()
         const preset = activePreset
 
-        for (let index = 0; index < BAR_COUNT; index++) {
-            const level = spectrum[barBins[index]] / 255
-            // Sizes go wild: a steep curve plus a punch-driven overshoot, so quiet bars stay
-            // low but a beat sends them shooting well past their steady-state height.
-            const height = 0.05 + Math.pow(level, 1.6) * 10 * (0.5 + reactivityValueNow) + punch * 3.5 * reactivityValueNow
-            const i = Math.floor(index / GRID_SIZE), j = index % GRID_SIZE
-            const dx = i - half, dz = j - half
-            dummy.position.set(dx * BAR_SPACING, height / 2 - 0.5, dz * BAR_SPACING)
-            dummy.scale.set(1, Math.max(0.02, height), 1)
-            dummy.updateMatrix()
-            bars.setMatrixAt(index, dummy.matrix)
-            const hue = (preset.hueBase + (barAngles[index] / (Math.PI * 2)) * preset.hueSpread + seconds * preset.hueSpeed * speedValueNow + 1) % 1
-            const lightness = 0.08 + level * 0.65 + punch * 0.25 * reactivityValueNow
-            bars.setColorAt(index, barColor.setHSL(hue, 0.9, Math.min(0.95, lightness)))
+        if (!preset.vga) {
+            for (let index = 0; index < BAR_COUNT; index++) {
+                const level = spectrum[barBins[index]] / 255
+                // Sizes go wild: a steep curve plus a punch-driven overshoot, so quiet bars stay
+                // low but a beat sends them shooting well past their steady-state height.
+                const height = 0.05 + Math.pow(level, 1.6) * 10 * (0.5 + reactivityValueNow) + punch * 3.5 * reactivityValueNow
+                const i = Math.floor(index / GRID_SIZE), j = index % GRID_SIZE
+                const dx = i - half, dz = j - half
+                dummy.position.set(dx * BAR_SPACING, height / 2 - 0.5, dz * BAR_SPACING)
+                dummy.scale.set(1, Math.max(0.02, height), 1)
+                dummy.updateMatrix()
+                bars.setMatrixAt(index, dummy.matrix)
+                const hue = (preset.hueBase + (barAngles[index] / (Math.PI * 2)) * preset.hueSpread + seconds * preset.hueSpeed * speedValueNow + 1) % 1
+                const lightness = 0.08 + level * 0.65 + punch * 0.25 * reactivityValueNow
+                bars.setColorAt(index, barColor.setHSL(hue, 0.9, Math.min(0.95, lightness)))
+            }
+            bars.instanceMatrix.needsUpdate = true
+            if (bars.instanceColor) {bars.instanceColor.needsUpdate = true}
         }
-        bars.instanceMatrix.needsUpdate = true
-        if (bars.instanceColor) {bars.instanceColor.needsUpdate = true}
 
         // Free spin vs static: the checkbox simply flips OrbitControls' autoRotate; a
         // drag/scroll/pinch still always takes over immediately either way.
@@ -315,12 +427,139 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
             }
         }
 
-        core.rotation.x = seconds * 0.4 * speedValueNow
-        core.rotation.y = seconds * 0.6 * speedValueNow
-        // Wild core pulse: bass alone nearly doubles it, a punch hit can triple it briefly.
-        const coreScale = 1 + bass * 1.6 * reactivityValueNow + punch * 1.4
-        core.scale.setScalar(coreScale)
-        ;(core.material as THREE.MeshBasicMaterial).color.setHSL((preset.hueBase + (seconds * preset.hueSpeed) % preset.hueSpread) % 1, 0.8, 0.65)
+        if (preset.vga && vgaCtx !== null) {
+            if (!vgaFlipActive && now >= vgaNextFlipAt) {triggerVgaFlip(now)}
+            if (vgaFlipActive && now >= vgaFlipEnd) {
+                vgaFlipActive = false
+                vgaNextFlipAt = scheduleNextBalloon(now)
+            }
+            if (vgaFlipActive) {
+                // Hanging-on-a-balloon sway plus a full 3D tumble while it's loose.
+                const t = (now - vgaFlipStart) * 0.001
+                vgaPlane.position.x = vgaRestPosition.x + Math.sin(t * 0.9) * 1.1
+                vgaPlane.position.y = vgaRestPosition.y + Math.sin(t * 1.3) * 0.5 + 0.3
+                vgaPlane.position.z = vgaRestPosition.z + Math.cos(t * 0.7) * 1.1
+                vgaPlane.rotation.y = t * 1.1 * speedValueNow
+                vgaPlane.rotation.x = Math.sin(t * 0.6) * 0.6
+                vgaPlane.rotation.z = Math.sin(t * 0.4) * 0.3
+            } else {
+                // Drift gently back to resting flat whenever it's not actively flipping.
+                vgaPlane.position.lerp(vgaRestPosition, 0.08)
+                vgaPlane.rotation.x *= 0.9
+                vgaPlane.rotation.y *= 0.9
+                vgaPlane.rotation.z *= 0.9
+            }
+
+            vgaCtx.fillStyle = VGA_PALETTE[1]
+            vgaCtx.fillRect(0, 0, FB_WIDTH, FB_HEIGHT)
+            vgaCtx.strokeStyle = VGA_PALETTE[14]
+            vgaCtx.lineWidth = 2
+            vgaCtx.strokeRect(3, 3, FB_WIDTH - 6, FB_HEIGHT - 6)
+            vgaCtx.strokeStyle = VGA_PALETTE[15]
+            vgaCtx.lineWidth = 1
+            vgaCtx.strokeRect(7, 7, FB_WIDTH - 14, FB_HEIGHT - 14)
+
+            vgaCtx.textBaseline = "top"
+            vgaCtx.textAlign = "center"
+            vgaCtx.font = "bold 12px ui-monospace, Menlo, Consolas, monospace"
+            vgaCtx.fillStyle = VGA_PALETTE[14]
+            vgaCtx.fillText("P R O T R A C K E R +   4 . 2 B", FB_WIDTH / 2, 14)
+            vgaCtx.font = "9px ui-monospace, Menlo, Consolas, monospace"
+            vgaCtx.fillStyle = VGA_PALETTE[11]
+            vgaCtx.fillText("- V G A   T R I B U T E   S C R E E N -", FB_WIDTH / 2, 28)
+
+            const status = player.currentStatus
+            const playing = player.playing.getValue()
+            vgaCtx.font = "9px ui-monospace, Menlo, Consolas, monospace"
+            vgaCtx.fillStyle = playing ? VGA_PALETTE[10] : VGA_PALETTE[7]
+            vgaCtx.fillText(playing ? "** PLAYING **" : "** STANDBY **", FB_WIDTH / 2, 40)
+            vgaCtx.fillStyle = VGA_PALETTE[7]
+            const info = isDefined(status)
+                ? `POS ${status.pos.toString().padStart(2, "0")}  PAT ${status.pattern.toString().padStart(2, "0")}  ROW ${status.row.toString().padStart(2, "0")}  SPD ${status.speed}/${status.tempo}  ${formatElapsed(player.elapsedMs)}`
+                : "LOAD A MODULE AND PRESS PLAY"
+            vgaCtx.fillText(info, FB_WIDTH / 2, 51)
+
+            const cycleSpeed = 6 * speedValueNow * (1 + bass * reactivityValueNow)
+            vgaCycle.value = (vgaCycle.value + cycleSpeed * (1 / 60)) % VGA_PALETTE.length
+            const barY = 62, barHeight = 10, swatches = 16
+            const swatchWidth = (FB_WIDTH - 16) / swatches
+            for (let i = 0; i < swatches; i++) {
+                const index = Math.floor((i + vgaCycle.value) % VGA_PALETTE.length)
+                vgaCtx.fillStyle = VGA_PALETTE[index]
+                vgaCtx.fillRect(8 + i * swatchWidth, barY, Math.ceil(swatchWidth), barHeight)
+            }
+            vgaCtx.strokeStyle = VGA_PALETTE[0]
+            vgaCtx.lineWidth = 1
+            vgaCtx.strokeRect(8, barY, FB_WIDTH - 16, barHeight)
+
+            const playAreaTop = barY + barHeight + 10
+            const playAreaBottom = FB_HEIGHT - 26
+            const baseRadius = 11
+            const moveSpeed = speedValueNow * (1 + bass * 0.6 * reactivityValueNow)
+            vgaBounce.x += vgaBounce.vx * moveSpeed
+            vgaBounce.y += vgaBounce.vy * moveSpeed
+            let bounced = false
+            if (vgaBounce.x - baseRadius < 10) {vgaBounce.x = 10 + baseRadius; vgaBounce.vx = Math.abs(vgaBounce.vx); bounced = true}
+            if (vgaBounce.x + baseRadius > FB_WIDTH - 10) {vgaBounce.x = FB_WIDTH - 10 - baseRadius; vgaBounce.vx = -Math.abs(vgaBounce.vx); bounced = true}
+            if (vgaBounce.y - baseRadius < playAreaTop) {vgaBounce.y = playAreaTop + baseRadius; vgaBounce.vy = Math.abs(vgaBounce.vy); bounced = true}
+            if (vgaBounce.y + baseRadius > playAreaBottom) {vgaBounce.y = playAreaBottom - baseRadius; vgaBounce.vy = -Math.abs(vgaBounce.vy); bounced = true}
+            if (bounced) {vgaBounce.colorIndex = (vgaBounce.colorIndex + 1) % VGA_BOUNCE_COLORS.length; vgaBounce.pulse = 1}
+            vgaBounce.pulse *= 0.9
+            const radius = baseRadius * (1 + vgaBounce.pulse * 0.6 + punch * 1.2 * reactivityValueNow)
+            drawVgaDiamond(vgaCtx, vgaBounce.x, vgaBounce.y, radius, VGA_PALETTE[VGA_BOUNCE_COLORS[vgaBounce.colorIndex]])
+            vgaCtx.strokeStyle = VGA_PALETTE[15]
+            vgaCtx.lineWidth = 1
+            vgaCtx.beginPath()
+            vgaCtx.moveTo(vgaBounce.x, vgaBounce.y - radius)
+            vgaCtx.lineTo(vgaBounce.x + radius, vgaBounce.y)
+            vgaCtx.lineTo(vgaBounce.x, vgaBounce.y + radius)
+            vgaCtx.lineTo(vgaBounce.x - radius, vgaBounce.y)
+            vgaCtx.closePath()
+            vgaCtx.stroke()
+
+            const twinkleCount = 40
+            for (let i = 0; i < twinkleCount; i++) {
+                const seedVal = i * 97.31
+                const x = 12 + ((seedVal * 13.7 + seconds * 4 * speedValueNow) % (FB_WIDTH - 24))
+                const y = playAreaTop + ((seedVal * 7.3) % (playAreaBottom - playAreaTop))
+                const flicker = (Math.sin(seconds * 3 + i) + 1) / 2
+                if (flicker > 0.6 - treble * reactivityValueNow * 0.3) {
+                    vgaCtx.fillStyle = VGA_PALETTE[8 + (i % 8)]
+                    vgaCtx.fillRect(Math.floor(x), Math.floor(y), 1, 1)
+                }
+            }
+
+            const scrollSpeed = 40 * speedValueNow * (1 + punch * reactivityValueNow)
+            vgaCtx.font = "11px ui-monospace, Menlo, Consolas, monospace"
+            const measuredWidth = vgaCtx.measureText(VGA_SCROLLTEXT).width
+            const loopWidth = measuredWidth + FB_WIDTH
+            const x0 = FB_WIDTH - ((seconds * scrollSpeed) % loopWidth)
+            vgaCtx.textAlign = "left"
+            vgaCtx.fillStyle = VGA_PALETTE[0]
+            vgaCtx.fillRect(6, FB_HEIGHT - 22, FB_WIDTH - 12, 14)
+            vgaCtx.strokeStyle = VGA_PALETTE[6]
+            vgaCtx.strokeRect(6, FB_HEIGHT - 22, FB_WIDTH - 12, 14)
+            vgaCtx.save()
+            vgaCtx.beginPath()
+            vgaCtx.rect(8, FB_HEIGHT - 22, FB_WIDTH - 16, 14)
+            vgaCtx.clip()
+            vgaCtx.fillStyle = VGA_PALETTE[14]
+            vgaCtx.fillText(VGA_SCROLLTEXT, x0, FB_HEIGHT - 20)
+            vgaCtx.fillText(VGA_SCROLLTEXT, x0 - loopWidth, FB_HEIGHT - 20)
+            vgaCtx.restore()
+
+            vgaCtx.fillStyle = "rgba(0, 0, 0, 0.22)"
+            for (let y = 0; y < FB_HEIGHT; y += 2) {vgaCtx.fillRect(0, y, FB_WIDTH, 1)}
+
+            vgaTexture.needsUpdate = true
+        } else {
+            core.rotation.x = seconds * 0.4 * speedValueNow
+            core.rotation.y = seconds * 0.6 * speedValueNow
+            // Wild core pulse: bass alone nearly doubles it, a punch hit can triple it briefly.
+            const coreScale = 1 + bass * 1.6 * reactivityValueNow + punch * 1.4
+            core.scale.setScalar(coreScale)
+            ;(core.material as THREE.MeshBasicMaterial).color.setHSL((preset.hueBase + (seconds * preset.hueSpeed) % preset.hueSpread) % 1, 0.8, 0.65)
+        }
 
         axisGroup.rotation.y = seconds * 0.05 * speedValueNow
         stars.rotation.y = seconds * 0.01 * speedValueNow
@@ -345,6 +584,9 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         coreMaterial.dispose()
         planetGeometry.dispose()
         planets.forEach(planet => (planet.mesh.material as THREE.MeshBasicMaterial).dispose())
+        vgaGeometry.dispose()
+        vgaMaterial.dispose()
+        vgaTexture.dispose()
         starGeometry.dispose()
         ;(stars.material as THREE.PointsMaterial).dispose()
         ;(floorGrid.material as THREE.Material).dispose()
