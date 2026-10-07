@@ -44,21 +44,24 @@ type Preset = {
     cityscape?: boolean // turn the bar grid into a rain-lit skyline silhouette, Blade-Runner style
     folding?: boolean  // swap the grid/core for hinged slabs that fold against each other, Inception style
     museum?: boolean   // float a little gallery of retro OS boot/prompt screens around the scene
+    coreScale?: number // multiplies the core object's base size (default 1) - the "object" side of the balance
+    barScale?: number  // multiplies the bar grid's reactive amplitude (default 1) - the "EQ" side of the balance
 }
 
 // Structurally distinct "themes" (shape/layout), each with its own color "variant" on top
 // (hueBase/hueSpread/hueSpeed/tint) - cheap to add more of either without rebuilding anything.
+// coreScale/barScale vary the EQ-vs-object balance per preset instead of it being fixed everywhere.
 const PRESETS: ReadonlyArray<Preset> = [
     {name: "Spectrum Grid", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.015, tint: 0xffffff},
-    {name: "Tunnel Knot", shape: "torusKnot", hueBase: 0.78, hueSpread: 0.25, hueSpeed: 0.02, tint: 0xdd88ff},
-    {name: "Octa Pulse", shape: "octahedron", hueBase: 0.1, hueSpread: 0.35, hueSpeed: 0.01, tint: 0xffcc66},
-    {name: "Dodeca Dream", shape: "dodecahedron", hueBase: 0.52, hueSpread: 0.3, hueSpeed: 0.008, tint: 0x66ccff},
-    {name: "Phosphor Mono", shape: "icosahedron", hueBase: 0.33, hueSpread: 0.04, hueSpeed: 0.002, tint: 0x55ff88},
-    {name: "Sunset Bars", shape: "tetrahedron", hueBase: 0.02, hueSpread: 0.15, hueSpeed: 0.012, tint: 0xff8855},
-    {name: "Deep Space", shape: "torusKnot", hueBase: 0.63, hueSpread: 0.2, hueSpeed: 0.006, tint: 0x3355ff},
-    {name: "Neon Grid", shape: "octahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.05, tint: 0xffffff},
+    {name: "Tunnel Knot", shape: "torusKnot", hueBase: 0.78, hueSpread: 0.25, hueSpeed: 0.02, tint: 0xdd88ff, coreScale: 1.8, barScale: 0.5},
+    {name: "Octa Pulse", shape: "octahedron", hueBase: 0.1, hueSpread: 0.35, hueSpeed: 0.01, tint: 0xffcc66, coreScale: 0.5, barScale: 1.6},
+    {name: "Dodeca Dream", shape: "dodecahedron", hueBase: 0.52, hueSpread: 0.3, hueSpeed: 0.008, tint: 0x66ccff, coreScale: 1.6, barScale: 0.6},
+    {name: "Phosphor Mono", shape: "icosahedron", hueBase: 0.33, hueSpread: 0.04, hueSpeed: 0.002, tint: 0x55ff88, coreScale: 0.3, barScale: 1.4},
+    {name: "Sunset Bars", shape: "tetrahedron", hueBase: 0.02, hueSpread: 0.15, hueSpeed: 0.012, tint: 0xff8855, coreScale: 0.7, barScale: 1.3},
+    {name: "Deep Space", shape: "torusKnot", hueBase: 0.63, hueSpread: 0.2, hueSpeed: 0.006, tint: 0x3355ff, coreScale: 2.2, barScale: 0.35},
+    {name: "Neon Grid", shape: "octahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.05, tint: 0xffffff, coreScale: 0.4, barScale: 1.7},
     {name: "Mono Cyan", shape: "icosahedron", hueBase: 0.5, hueSpread: 0.02, hueSpeed: 0.004, tint: 0x33ffee},
-    {name: "Candy", shape: "dodecahedron", hueBase: 0.85, hueSpread: 0.6, hueSpeed: 0.03, tint: 0xff99dd},
+    {name: "Candy", shape: "dodecahedron", hueBase: 0.85, hueSpread: 0.6, hueSpeed: 0.03, tint: 0xff99dd, coreScale: 1.4, barScale: 0.8},
     {name: "Möbius Loop", shape: "mobius", hueBase: 0.72, hueSpread: 0.4, hueSpeed: 0.015, tint: 0xffffff},
     {name: "Orbital System", shape: "icosahedron", hueBase: 0.58, hueSpread: 0.5, hueSpeed: 0.01, tint: 0xffffff, planets: true},
     {name: "VGA Tribute", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.01, tint: 0xffffff, vga: true},
@@ -237,15 +240,33 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         </select>
     )
     const spinInput: HTMLInputElement = <input type="checkbox" checked/>
+    const consoleEl: HTMLDivElement = <div className="console"/>
+    consoleEl.hidden = true
+    stage.appendChild(consoleEl)
+    const consoleInput: HTMLInputElement = (
+        <input type="checkbox" onchange={() => {consoleEl.hidden = !consoleInput.checked}}/>
+    )
     const controlsBar: HTMLDivElement = (
         <div className="controls">
             <label>Preset {presetSelect}</label>
             <label>Speed {speedInput} {speedValue}</label>
             <label>Reactivity {reactivityInput} {reactivityValue}</label>
             <label>{spinInput} Free spin</label>
+            <label>{consoleInput} Console</label>
         </div>
     )
     const element: HTMLDivElement = <div className={className}>{controlsBar}{stage}</div>
+
+    // Optional Doom/Quake-style console: a scrolling log of short status/fun lines, off by
+    // default. Purely cosmetic/debug flavor - nothing here is read back by anything else.
+    const consoleLines: Array<string> = []
+    const pushConsoleLine = (line: string): void => {
+        consoleLines.push(line)
+        if (consoleLines.length > 6) {consoleLines.shift()}
+        consoleEl.textContent = consoleLines.map(entry => `> ${entry}`).join("\n")
+    }
+    let lastConsoleStatAt = 0
+    let lastPunchLogAt = 0
 
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0x020305)
@@ -531,9 +552,13 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         }
     }
     applyPreset(PRESETS[0])
+    pushConsoleLine(`PRESET: ${PRESETS[0].name.toUpperCase()}`)
     presetSelect.addEventListener("change", () => {
         const preset = PRESETS.find(p => p.name === presetSelect.value)
-        if (preset !== undefined) {applyPreset(preset)}
+        if (preset !== undefined) {
+            applyPreset(preset)
+            pushConsoleLine(`PRESET: ${preset.name.toUpperCase()}`)
+        }
     })
 
     lifecycle.own(AnimationFrame.add(() => {
@@ -554,15 +579,17 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         fog.density = preset.cityscape ? 0.045 : 0.022
         scene.rotation.z = preset.folding ? Math.sin(seconds * 0.1 * speedValueNow) * 0.12 * reactivityValueNow : 0
 
+        const barScale = preset.barScale ?? 1
         if (!preset.vga && !preset.folding && !preset.museum) {
             for (let index = 0; index < BAR_COUNT; index++) {
                 const level = spectrum[barBins[index]] / 255
                 // Sizes go wild: a steep curve plus a punch-driven overshoot, so quiet bars stay
                 // low but a beat sends them shooting well past their steady-state height. "Neon
                 // City" adds a fixed per-building bias on top, so it reads as a skyline, not an EQ.
+                // barScale/coreScale (on the core below) vary the EQ-vs-object balance per preset.
                 const base = preset.cityscape ? 0.3 + cityHeights[index] * 4.5 : 0.05
-                const reactive = preset.cityscape ? 4 : 10
-                const height = base + Math.pow(level, 1.6) * reactive * (0.5 + reactivityValueNow) + punch * 3.5 * reactivityValueNow
+                const reactive = (preset.cityscape ? 4 : 10) * barScale
+                const height = base + Math.pow(level, 1.6) * reactive * (0.5 + reactivityValueNow) + punch * 3.5 * reactivityValueNow * barScale
                 const i = Math.floor(index / GRID_SIZE), j = index % GRID_SIZE
                 const dx = i - half, dz = j - half
                 dummy.position.set(dx * BAR_SPACING, height / 2 - 0.5, dz * BAR_SPACING)
@@ -761,7 +788,8 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
             core.rotation.x = seconds * 0.4 * speedValueNow
             core.rotation.y = seconds * 0.6 * speedValueNow
             // Wild core pulse: bass alone nearly doubles it, a punch hit can triple it briefly.
-            const coreScale = 1 + bass * 1.6 * reactivityValueNow + punch * 1.4
+            // coreScale (preset data, not the local pulse below) sets the base EQ-vs-object balance.
+            const coreScale = (preset.coreScale ?? 1) * (1 + bass * 1.6 * reactivityValueNow + punch * 1.4)
             core.scale.setScalar(coreScale)
             ;(core.material as THREE.MeshBasicMaterial).color.setHSL((preset.hueBase + (seconds * preset.hueSpeed) % preset.hueSpread) % 1, 0.8, 0.65)
         }
@@ -778,6 +806,17 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         statusLine.value = isDefined(status)
             ? `POS ${status.pos.toString().padStart(2, "0")}  PAT ${status.pattern.toString().padStart(2, "0")}  ROW ${status.row.toString().padStart(2, "0")}`
             : "LOAD A MODULE AND PRESS PLAY"
+
+        if (!consoleEl.hidden) {
+            if (punch > 0.55 && now - lastPunchLogAt > 400) {
+                lastPunchLogAt = now
+                pushConsoleLine("PUNCH!")
+            }
+            if (now - lastConsoleStatAt > 2000) {
+                lastConsoleStatAt = now
+                pushConsoleLine(`BASS ${bass.toFixed(2)}  MID ${mid.toFixed(2)}  TREB ${treble.toFixed(2)}  BARS ${BAR_COUNT}`)
+            }
+        }
 
         composer.render()
     }))
