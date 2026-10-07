@@ -26,7 +26,7 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
     const stopped = lifecycle.own(new DefaultObservableValue(true))
     lifecycle.own(player.playing.catchupAndSubscribe(owner => stopped.setValue(!owner.getValue())))
     const fileInput: HTMLInputElement = (
-        <input type="file" accept=".mod,.MOD" hidden=""
+        <input type="file" accept=".mod,.MOD" hidden={true}
                onchange={async () => {
                    const file = fileInput.files?.[0]
                    if (isDefined(file)) {player.load(new Uint8Array(await file.arrayBuffer()))}
