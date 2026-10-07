@@ -3,13 +3,12 @@ import {DefaultObservableValue, isDefined, Lifecycle} from "@opendaw/lib-std"
 import {createElement} from "@opendaw/lib-jsx"
 import {AnimationFrame, Html} from "@opendaw/lib-dom"
 import {Player} from "@/Player"
+import {AudioState, sampleBands} from "@/ui/audioReactive"
+import {
+    drawMatrixRain, matrixChars, ramp, SizeId, SizePreset, SIZE_OPTIONS, SIZE_PRESETS, ThemeId, THEME_OPTIONS
+} from "@/ui/visualizerTheme"
 
 const className = Html.adoptStyleSheet(css, "Visualizer3D")
-
-// AAlib-style luminance ramp, same family used by the classic "bb" demo intro.
-const ramp = " .:-=+*#%@"
-// Digital-rain glyphs for the Matrix theme (half-width katakana + digits).
-const matrixChars = "ﾊﾐﾋｰｳｼﾅﾁﾄﾓﾆﾗﾖﾓｴﾙﾈ0123456789"
 
 type Vec3 = readonly [number, number, number]
 type Triangle = readonly [Vec3, Vec3, Vec3]
@@ -120,26 +119,6 @@ export const SHAPE_OPTIONS: ReadonlyArray<{ id: ShapeId, label: string }> = [
     {id: "equalizer", label: "3D Equalizer"}
 ]
 
-export type ThemeId = "classic" | "matrix" | "amber"
-export const THEME_OPTIONS: ReadonlyArray<{ id: ThemeId, label: string }> = [
-    {id: "classic", label: "Classic (aalib)"},
-    {id: "matrix", label: "Matrix"},
-    {id: "amber", label: "Amber CRT"}
-]
-
-export type SizeId = "compact" | "normal" | "large"
-type SizePreset = { cellWidth: number, fontSizeRem: number }
-const SIZE_PRESETS: Record<SizeId, SizePreset> = {
-    compact: {cellWidth: 5, fontSizeRem: 0.46},
-    normal: {cellWidth: 7, fontSizeRem: 0.64},
-    large: {cellWidth: 10, fontSizeRem: 0.92}
-}
-export const SIZE_OPTIONS: ReadonlyArray<{ id: SizeId, label: string }> = [
-    {id: "compact", label: "Compact"},
-    {id: "normal", label: "Normal"},
-    {id: "large", label: "Large"}
-]
-
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 const cross = (a: Vec3, b: Vec3): Vec3 =>
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
@@ -157,12 +136,6 @@ const rotate = ([x, y, z]: Vec3, angleX: number, angleY: number): Vec3 => {
 }
 const edge = (x0: number, y0: number, x1: number, y1: number, px: number, py: number): number =>
     (px - x0) * (y1 - y0) - (py - y0) * (x1 - x0)
-
-type AudioState = {
-    lastTime: number
-    bassEnvelope: number
-    punch: number
-}
 
 type Controls = {
     speed: DefaultObservableValue<number>
@@ -195,26 +168,7 @@ const draw = (screen: HTMLPreElement, size: SizePreset, spectrum: Uint8Array, pl
     }
     write(0, 0, horizontal)
 
-    const dt = Math.min(0.1, Math.max(0, (time - audio.lastTime) / 1000))
-    audio.lastTime = time
-
-    let bass = 0
-    for (let index = 0; index < 16; index++) {bass += spectrum[index] / 255}
-    bass /= 16
-    let mid = 0
-    for (let index = 32; index < 112; index++) {mid += spectrum[index] / 255}
-    mid /= 80
-    let treble = 0
-    for (let index = 96; index < 160; index++) {treble += spectrum[index] / 255}
-    treble /= 64
-
-    // Transient ("beat") detection: a fast-attack/slow-decay envelope chases bass,
-    // and a sudden excess above it fires a punch that flashes brightness + kicks the spin.
-    const attack = 1 - Math.pow(0.001, dt)
-    const decay = 1 - Math.pow(0.35, dt)
-    audio.bassEnvelope += (bass - audio.bassEnvelope) * (bass > audio.bassEnvelope ? attack : decay)
-    const excess = Math.max(0, bass - audio.bassEnvelope * 1.08)
-    audio.punch = Math.max(excess * 2.2, audio.punch * Math.pow(0.08, dt))
+    const {bass, mid, treble, punch} = sampleBands(spectrum, time, audio)
 
     const reactivity = controls.reactivity.getValue()
     const speedBase = controls.speed.getValue()
@@ -233,13 +187,13 @@ const draw = (screen: HTMLPreElement, size: SizePreset, spectrum: Uint8Array, pl
     const cx = 1 + plotWidth / 2
     const cy = plotTop + plotHeight / 2
     const seconds = time * 0.001
-    const spin = speedBase * (0.25 + (bass + audio.punch * 1.5) * 1.4 * reactivity)
+    const spin = speedBase * (0.25 + (bass + punch * 1.5) * 1.4 * reactivity)
     // The equalizer is a bar chart, not a solid to tumble — a fixed tilt plus a slow yaw
     // keeps it readable while still feeling 3D; other shapes get the full reactive spin.
     const angleX = shapeId === "equalizer" ? 0.5 : seconds * 0.6 * spin
     const angleY = shapeId === "equalizer" ? seconds * 0.15 * speedBase : seconds * 0.9 * spin
     const dist = 3.0
-    const pulse = 1 + (bass * 0.3 + audio.punch * 0.4) * reactivity
+    const pulse = 1 + (bass * 0.3 + punch * 0.4) * reactivity
     const scale = Math.min(plotWidth * 0.42, plotHeight * 0.78) * pulse
     const aspect = 0.52
     // Light direction wobbles with mid-band energy so shading stays alive even at rest.
@@ -251,20 +205,7 @@ const draw = (screen: HTMLPreElement, size: SizePreset, spectrum: Uint8Array, pl
 
     // Matrix theme: digital-rain background, drawn before the shape so it shows through gaps.
     if (themeId === "matrix") {
-        for (let x = 1; x < columns - 1; x++) {
-            const colSeed = ((x * 2654435761) >>> 0) % 1000 / 1000
-            const speedFactor = 0.6 + colSeed * 1.4
-            const span = plotHeight + 12
-            const head = Math.floor((seconds * 9 * speedBase * speedFactor + colSeed * 1000) % span) - 6
-            const length = 6 + Math.floor(colSeed * 10)
-            for (let i = 0; i < length; i++) {
-                const y = plotTop + head - i
-                if (y < plotTop || y > plotBottom) {continue}
-                const t = i / length
-                const glyph = matrixChars[Math.floor((1 - t) * (matrixChars.length - 1))]
-                art[y][x] = glyph
-            }
-        }
+        drawMatrixRain(art, columns, plotTop, plotBottom, seconds, speedBase)
     }
 
     const cull = SHAPE_CULL[shapeId]
@@ -297,7 +238,7 @@ const draw = (screen: HTMLPreElement, size: SizePreset, spectrum: Uint8Array, pl
 
     for (const item of items) {
         const [pa, pb, pc] = projected[item.index]
-        const luminance = Math.min(1, Math.max(0, dot(item.normal, lightDir)) + audio.punch * 0.6)
+        const luminance = Math.min(1, Math.max(0, dot(item.normal, lightDir)) + punch * 0.6)
         const glyph = activeRamp[Math.min(activeRamp.length - 1, Math.floor(luminance * (activeRamp.length - 1)))]
         const minX = Math.max(1, Math.floor(Math.min(pa[0], pb[0], pc[0])))
         const maxX = Math.min(columns - 2, Math.ceil(Math.max(pa[0], pb[0], pc[0])))
