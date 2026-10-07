@@ -26,12 +26,13 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
     const stopped = lifecycle.own(new DefaultObservableValue(true))
     lifecycle.own(player.playing.catchupAndSubscribe(owner => stopped.setValue(!owner.getValue())))
     const fileInput: HTMLInputElement = (
-        <input type="file" accept=".mod,.MOD" hidden={true}
+        <input type="file" accept=".mod,.MOD"
                onchange={async () => {
                    const file = fileInput.files?.[0]
                    if (isDefined(file)) {player.load(new Uint8Array(await file.arrayBuffer()))}
                }}/>
     )
+    fileInput.hidden = true
     const urlInput: HTMLInputElement = (
         <input type="url" className="url" placeholder="https://.../module.mod" size={22}
                onkeydown={(event: KeyboardEvent) => {
