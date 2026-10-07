@@ -39,8 +39,11 @@ type Preset = {
     hueSpread: number // how much of the wheel the grid/stars sweep across
     hueSpeed: number  // how fast the sweep drifts over time
     tint: number      // multiplies the floor grid + starfield's baked-in vertex colors
-    planets?: boolean // swap the wireframe core (and the bar grid) for a little orbiting solar system
-    vga?: boolean     // swap everything for the VGA tribute screen, floating as a real plane in the scene
+    planets?: boolean  // swap the wireframe core (and the bar grid) for a little orbiting solar system
+    vga?: boolean      // swap everything for the VGA tribute screen, floating as a real plane in the scene
+    cityscape?: boolean // turn the bar grid into a rain-lit skyline silhouette, Blade-Runner style
+    folding?: boolean  // swap the grid/core for hinged slabs that fold against each other, Inception style
+    museum?: boolean   // float a little gallery of retro OS boot/prompt screens around the scene
 }
 
 // Structurally distinct "themes" (shape/layout), each with its own color "variant" on top
@@ -58,7 +61,10 @@ const PRESETS: ReadonlyArray<Preset> = [
     {name: "Candy", shape: "dodecahedron", hueBase: 0.85, hueSpread: 0.6, hueSpeed: 0.03, tint: 0xff99dd},
     {name: "Möbius Loop", shape: "mobius", hueBase: 0.72, hueSpread: 0.4, hueSpeed: 0.015, tint: 0xffffff},
     {name: "Orbital System", shape: "icosahedron", hueBase: 0.58, hueSpread: 0.5, hueSpeed: 0.01, tint: 0xffffff, planets: true},
-    {name: "VGA Tribute", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.01, tint: 0xffffff, vga: true}
+    {name: "VGA Tribute", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.01, tint: 0xffffff, vga: true},
+    {name: "Neon City", shape: "icosahedron", hueBase: 0.85, hueSpread: 0.35, hueSpeed: 0.02, tint: 0xffffff, cityscape: true},
+    {name: "Folding Dream", shape: "icosahedron", hueBase: 0.6, hueSpread: 0.5, hueSpeed: 0.01, tint: 0xffffff, folding: true},
+    {name: "Retro OS Museum", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.01, tint: 0xffffff, museum: true}
 ]
 
 const PLANET_COUNT = 6
@@ -92,6 +98,84 @@ const VGA_SCROLLTEXT =
     "THANKS FOR LISTENING ON PROTRACKER+ - NOW GO MAKE SOME NOISE ...   "
 
 type VgaBounce = {x: number, y: number, vx: number, vy: number, colorIndex: number, pulse: number}
+
+// ---- Retro OS Museum: a little gallery of floating flat screens, each one a canvas-texture
+// plane (the same trick as the VGA tribute screen) looping a stylized, non-pixel-exact nod to a
+// classic command-line/boot screen. All names/wording below are original fan-tribute flavor
+// text - no real OS's actual boot banner, slogan, or logo is reproduced verbatim.
+type MuseumProfile = {
+    name: string
+    bg: string
+    fg: string
+    accent: string
+    prompt: string
+    lines: ReadonlyArray<string>
+}
+
+const MUSEUM_PROFILES: ReadonlyArray<MuseumProfile> = [
+    {name: "MS-DOS 3.3", bg: "#000000", fg: "#AAAAAA", accent: "#55FFFF", prompt: "C:\\>",
+        lines: ["MS-DOS-STYLE 3.3 (FAN TRIBUTE)", "", "DIR", "VOLUME IN DRIVE C HAS NO LABEL"]},
+    {name: "DR-DOS", bg: "#000000", fg: "#55FF55", accent: "#FFFF55", prompt: "A>",
+        lines: ["DR-DOS-STYLE (FAN TRIBUTE)", "", "A LIGHTWEIGHT MS-DOS ALTERNATIVE"]},
+    {name: "Novell DOS", bg: "#0000AA", fg: "#FFFFFF", accent: "#55FFFF", prompt: "C:\\>",
+        lines: ["NOVELL DOS-STYLE (FAN TRIBUTE)", "", "DR-DOS'S SUCCESSOR, NETWORK-READY"]},
+    {name: "Amiga Workbench", bg: "#AAAAAA", fg: "#000000", accent: "#0000AA", prompt: "1>",
+        lines: ["AMIGA-STYLE WORKBENCH (FAN TRIBUTE)", "", "INSERT WORKBENCH DISK IN DF0:"]},
+    {name: "Atari TOS", bg: "#FFFFFF", fg: "#000000", accent: "#AA0000", prompt: "A>",
+        lines: ["ATARI-STYLE TOS (FAN TRIBUTE)", "", "GEM-STYLE DESKTOP 1.0"]},
+    {name: "Commodore 64", bg: "#4040C0", fg: "#A0A0FF", accent: "#FFFFFF", prompt: "READY.",
+        lines: ["COMMODORE-STYLE BASIC (FAN TRIBUTE)", "", "64K RAM SYSTEM"]},
+    {name: "Windows 3.x", bg: "#008080", fg: "#FFFFFF", accent: "#C0C0C0", prompt: "",
+        lines: ["WINDOWS-STYLE 3.X (FAN TRIBUTE)", "", "PROGRAM MANAGER"]},
+    {name: "OS/2 Warp", bg: "#000066", fg: "#66CCFF", accent: "#FFFFFF", prompt: "[C:\\]",
+        lines: ["OS/2-STYLE WARP (FAN TRIBUTE)", "", "MULTITASKING FOR THE DESKTOP"]},
+    {name: "Red Hat Linux", bg: "#000000", fg: "#FF5555", accent: "#FFFFFF", prompt: "login:",
+        lines: ["LINUX-STYLE DISTRIBUTION (FAN TRIBUTE)", "", "KERNEL BOOTING ..."]},
+    {name: "SCO UNIX", bg: "#000000", fg: "#00AAAA", accent: "#FFFFFF", prompt: "login:",
+        lines: ["SCO-STYLE UNIX (FAN TRIBUTE)", "", "OPEN DESKTOP ENVIRONMENT"]},
+    {name: "Solaris", bg: "#000000", fg: "#FFAA00", accent: "#FFFFFF", prompt: "login:",
+        lines: ["SOLARIS-STYLE UNIX (FAN TRIBUTE)", "", "SUNOS-STYLE KERNEL"]}
+]
+
+const MUSEUM_FB_WIDTH = 220
+const MUSEUM_FB_HEIGHT = 150
+
+type MuseumScreen = {
+    canvas: HTMLCanvasElement
+    ctx: CanvasRenderingContext2D
+    texture: THREE.CanvasTexture
+    plane: THREE.Mesh
+    material: THREE.MeshBasicMaterial
+    profile: MuseumProfile
+    radius: number
+    height: number
+    speed: number
+    phase: number
+}
+
+const museumGeometry = new THREE.PlaneGeometry(2.6, 1.77)
+
+const drawMuseumScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    ctx.strokeStyle = profile.accent
+    ctx.lineWidth = 3
+    ctx.strokeRect(1.5, 1.5, w - 3, h - 3)
+    ctx.textBaseline = "top"
+    ctx.textAlign = "left"
+    ctx.font = "bold 11px ui-monospace, Menlo, Consolas, monospace"
+    ctx.fillStyle = profile.accent
+    ctx.fillText(profile.name.toUpperCase(), 10, 10)
+    ctx.font = "10px ui-monospace, Menlo, Consolas, monospace"
+    ctx.fillStyle = profile.fg
+    let y = 30
+    for (const line of profile.lines) {
+        ctx.fillText(line, 10, y)
+        y += 15
+    }
+    const blink = Math.floor(seconds * 2) % 2 === 0
+    ctx.fillText(profile.prompt + (blink ? "_" : " "), 10, y)
+}
 
 const drawVgaDiamond = (ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, color: string): void => {
     ctx.fillStyle = color
@@ -201,6 +285,9 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     bars.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     const barBins = new Int32Array(BAR_COUNT)
     const barAngles = new Float32Array(BAR_COUNT)
+    // "Neon City" preset only: a fixed per-building height bias, so the grid reads as a skyline
+    // silhouette instead of a flat spectrum analyzer - spectrum reactivity still rides on top.
+    const cityHeights = new Float32Array(BAR_COUNT)
     const half = (GRID_SIZE - 1) / 2
     for (let i = 0; i < GRID_SIZE; i++) {
         for (let j = 0; j < GRID_SIZE; j++) {
@@ -209,6 +296,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
             const dist = Math.hypot(dx, dz) / Math.hypot(half, half) // 0 at center, 1 at corners
             barBins[index] = Math.min(255, Math.floor(Math.pow(dist, 1.3) * 230))
             barAngles[index] = Math.atan2(dz, dx)
+            cityHeights[index] = Math.random()
             dummy.position.set(dx * BAR_SPACING, 0, dz * BAR_SPACING)
             dummy.scale.set(1, 0.01, 1)
             dummy.updateMatrix()
@@ -217,6 +305,74 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         }
     }
     scene.add(bars)
+
+    // Falling rain for "Neon City" - plain points, wraps back to the top once it passes the floor.
+    const RAIN_COUNT = 500
+    const rainGeometry = new THREE.BufferGeometry()
+    const rainPositions = new Float32Array(RAIN_COUNT * 3)
+    for (let i = 0; i < RAIN_COUNT; i++) {
+        rainPositions[i * 3] = (Math.random() - 0.5) * 20
+        rainPositions[i * 3 + 1] = Math.random() * 14
+        rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 20
+    }
+    rainGeometry.setAttribute("position", new THREE.BufferAttribute(rainPositions, 3))
+    const rainMaterial = new THREE.PointsMaterial({
+        color: 0x99ccff, size: 0.05, transparent: true, opacity: 0.55,
+        blending: THREE.AdditiveBlending, depthWrite: false
+    })
+    const rain = new THREE.Points(rainGeometry, rainMaterial)
+    rain.visible = false
+    scene.add(rain)
+
+    // "Folding Dream" preset: hinged slabs arranged in a ring, each swinging open/closed on its
+    // own phase - a cheap stand-in for Inception's folding-city non-Euclidean fight scene.
+    const FOLD_COUNT = 6
+    const foldGeometry = new THREE.PlaneGeometry(3.2, 3.2)
+    const foldingGroup = new THREE.Group()
+    foldingGroup.visible = false
+    const foldHinges: ReadonlyArray<{hinge: THREE.Group, material: THREE.MeshBasicMaterial, phase: number}> =
+        Array.from({length: FOLD_COUNT}, (_, i) => {
+            const angle = (i / FOLD_COUNT) * Math.PI * 2
+            const hinge = new THREE.Group()
+            hinge.position.set(Math.cos(angle) * 2.2, 1.6, Math.sin(angle) * 2.2)
+            hinge.rotation.y = -angle
+            const material = new THREE.MeshBasicMaterial({
+                color: 0xffffff, wireframe: true, transparent: true, opacity: 0.65, side: THREE.DoubleSide
+            })
+            const slab = new THREE.Mesh(foldGeometry, material)
+            slab.position.x = 1.6 // hinges from the group's local origin edge, not its own center
+            hinge.add(slab)
+            foldingGroup.add(hinge)
+            return {hinge, material, phase: i * 0.7}
+        })
+    scene.add(foldingGroup)
+
+    // "Retro OS Museum" preset: a little gallery of floating screens, each looping a stylized,
+    // non-pixel-exact nod to a classic command-line/boot screen. All wording below is original
+    // fan-tribute flavor text, not a reproduction of any real OS's actual boot banner or logo.
+    const museumScreens: ReadonlyArray<MuseumScreen> = MUSEUM_PROFILES.map((profile, i) => {
+        const canvas = document.createElement("canvas")
+        canvas.width = MUSEUM_FB_WIDTH
+        canvas.height = MUSEUM_FB_HEIGHT
+        const ctx = canvas.getContext("2d") as CanvasRenderingContext2D
+        const texture = new THREE.CanvasTexture(canvas)
+        texture.magFilter = THREE.NearestFilter
+        texture.minFilter = THREE.NearestFilter
+        texture.generateMipmaps = false
+        const material = new THREE.MeshBasicMaterial({map: texture, side: THREE.DoubleSide})
+        const plane = new THREE.Mesh(museumGeometry, material)
+        return {
+            canvas, ctx, texture, plane, material, profile,
+            radius: 5 + (i % 3) * 1.6,
+            height: 1 + (i % 4) * 1.3,
+            speed: 0.05 + (i % 5) * 0.012,
+            phase: (i / MUSEUM_PROFILES.length) * Math.PI * 2
+        }
+    })
+    const museumGroup = new THREE.Group()
+    museumGroup.visible = false
+    museumScreens.forEach(screen => museumGroup.add(screen.plane))
+    scene.add(museumGroup)
 
     // Faint XYZ axis gizmo at the origin, under the bar grid.
     const axisGroup = new THREE.Group()
@@ -359,12 +515,16 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const applyPreset = (preset: Preset): void => {
         activePreset = preset
         core.geometry = coreGeometries[preset.shape]
-        core.visible = !preset.planets && !preset.vga
-        bars.visible = !preset.vga
+        core.visible = !preset.planets && !preset.vga && !preset.folding && !preset.museum
+        bars.visible = !preset.vga && !preset.folding && !preset.museum
         planetGroup.visible = preset.planets === true
         vgaPlane.visible = preset.vga === true
+        rain.visible = preset.cityscape === true
+        foldingGroup.visible = preset.folding === true
+        museumGroup.visible = preset.museum === true
         floorTint.set(preset.tint)
         starTint.set(preset.tint)
+        scene.rotation.z = 0
         if (preset.vga) {
             vgaNextFlipAt = scheduleNextBalloon(performance.now())
             vgaFlipActive = false
@@ -387,12 +547,22 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         const reactivityValueNow = reactivity.getValue()
         const preset = activePreset
 
-        if (!preset.vga) {
+        // Fog/world-tilt are shared scene state, so they're set uniformly for every preset
+        // rather than needing a reset branch everywhere else.
+        const fog = scene.fog as THREE.FogExp2
+        fog.color.setHex(preset.cityscape ? 0x220022 : 0x020305)
+        fog.density = preset.cityscape ? 0.045 : 0.022
+        scene.rotation.z = preset.folding ? Math.sin(seconds * 0.1 * speedValueNow) * 0.12 * reactivityValueNow : 0
+
+        if (!preset.vga && !preset.folding && !preset.museum) {
             for (let index = 0; index < BAR_COUNT; index++) {
                 const level = spectrum[barBins[index]] / 255
                 // Sizes go wild: a steep curve plus a punch-driven overshoot, so quiet bars stay
-                // low but a beat sends them shooting well past their steady-state height.
-                const height = 0.05 + Math.pow(level, 1.6) * 10 * (0.5 + reactivityValueNow) + punch * 3.5 * reactivityValueNow
+                // low but a beat sends them shooting well past their steady-state height. "Neon
+                // City" adds a fixed per-building bias on top, so it reads as a skyline, not an EQ.
+                const base = preset.cityscape ? 0.3 + cityHeights[index] * 4.5 : 0.05
+                const reactive = preset.cityscape ? 4 : 10
+                const height = base + Math.pow(level, 1.6) * reactive * (0.5 + reactivityValueNow) + punch * 3.5 * reactivityValueNow
                 const i = Math.floor(index / GRID_SIZE), j = index % GRID_SIZE
                 const dx = i - half, dz = j - half
                 dummy.position.set(dx * BAR_SPACING, height / 2 - 0.5, dz * BAR_SPACING)
@@ -405,6 +575,41 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
             }
             bars.instanceMatrix.needsUpdate = true
             if (bars.instanceColor) {bars.instanceColor.needsUpdate = true}
+        }
+
+        if (preset.cityscape) {
+            const positions = rainGeometry.attributes.position.array as Float32Array
+            const fallSpeed = (6 + bass * 4 * reactivityValueNow) * speedValueNow * (1 / 60)
+            for (let i = 0; i < RAIN_COUNT; i++) {
+                positions[i * 3 + 1] -= fallSpeed
+                if (positions[i * 3 + 1] < 0) {positions[i * 3 + 1] = 14}
+            }
+            rainGeometry.attributes.position.needsUpdate = true
+        }
+
+        if (preset.folding) {
+            const amplitude = 0.9 + bass * 1.4 * reactivityValueNow + punch * 1.0
+            for (const {hinge, material, phase} of foldHinges) {
+                hinge.rotation.x = Math.sin(seconds * 0.5 * speedValueNow + phase) * amplitude
+                const hue = (preset.hueBase + phase * 0.1 + seconds * preset.hueSpeed) % 1
+                material.color.setHSL(hue, 0.8, 0.5 + 0.2 * Math.sin(seconds + phase))
+            }
+            foldingGroup.rotation.y = seconds * 0.05 * speedValueNow
+        }
+
+        if (preset.museum) {
+            for (const screen of museumScreens) {
+                const angle = screen.phase + seconds * screen.speed * speedValueNow
+                screen.plane.position.set(
+                    Math.cos(angle) * screen.radius,
+                    screen.height + Math.sin(seconds * 0.3 + screen.phase) * 0.3,
+                    Math.sin(angle) * screen.radius
+                )
+                screen.plane.rotation.y = -angle + Math.PI / 2
+                screen.plane.rotation.z = Math.sin(seconds * 0.4 + screen.phase) * 0.15
+                drawMuseumScreen(screen.ctx, MUSEUM_FB_WIDTH, MUSEUM_FB_HEIGHT, screen.profile, seconds)
+                screen.texture.needsUpdate = true
+            }
         }
 
         // Free spin vs static: the checkbox simply flips OrbitControls' autoRotate; a
@@ -587,6 +792,15 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         vgaGeometry.dispose()
         vgaMaterial.dispose()
         vgaTexture.dispose()
+        rainGeometry.dispose()
+        rainMaterial.dispose()
+        foldGeometry.dispose()
+        foldHinges.forEach(({material}) => material.dispose())
+        museumGeometry.dispose()
+        museumScreens.forEach(screen => {
+            screen.material.dispose()
+            screen.texture.dispose()
+        })
         starGeometry.dispose()
         ;(stars.material as THREE.PointsMaterial).dispose()
         ;(floorGrid.material as THREE.Material).dispose()
