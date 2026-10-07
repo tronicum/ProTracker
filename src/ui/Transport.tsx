@@ -32,6 +32,19 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
                    if (isDefined(file)) {player.load(new Uint8Array(await file.arrayBuffer()))}
                }}/>
     )
+    const urlInput: HTMLInputElement = (
+        <input type="url" className="url" placeholder="https://.../module.mod" size={22}
+               onkeydown={(event: KeyboardEvent) => {
+                   if (event.key === "Enter") {loadUrlButton.click()}
+               }}/>
+    )
+    const loadUrlButton: HTMLButtonElement = (
+        <button className="mode" type="button"
+                onclick={() => {
+                    const url = urlInput.value.trim()
+                    if (url !== "") {player.loadFromUrl(url).catch(reason => player.error.setValue(String(reason)))}
+                }}>Load URL</button>
+    )
     const trackerButton: HTMLButtonElement = (
         <button className="mode" type="button" aria-pressed="true"
                 onclick={() => viewMode.setValue("tracker")}>Tracker</button>
@@ -73,6 +86,8 @@ export const Transport = ({lifecycle, player, initialModule, viewMode}: Construc
                 <Button lifecycle={lifecycle} label="Open…" onClick={() => fileInput.click()}/>
                 {fileInput}
                 <ModuleSelect lifecycle={lifecycle} player={player} initial={initialModule}/>
+                {urlInput}
+                {loadUrlButton}
                 <Checkbox lifecycle={lifecycle} model={player.filter} label="A500 filter"
                           tooltip="Fixed 6 dB/oct low-pass of the A500 output stage"/>
                 <Checkbox lifecycle={lifecycle} model={player.led} label="LED filter"
