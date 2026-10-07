@@ -28,6 +28,36 @@ type Construct = {
 const dummy = new THREE.Object3D()
 const barColor = new THREE.Color()
 
+type CoreShape = "icosahedron" | "torusKnot" | "octahedron" | "dodecahedron" | "tetrahedron"
+
+type Preset = {
+    name: string
+    shape: CoreShape
+    hueBase: number   // 0-1, center of the palette
+    hueSpread: number // how much of the wheel the grid/stars sweep across
+    hueSpeed: number  // how fast the sweep drifts over time
+    tint: number      // multiplies the floor grid + starfield's baked-in vertex colors
+    planets?: boolean // swap the wireframe core for a little orbiting solar system
+}
+
+// Eleven distinct looks over the same scene: different centerpiece shape and color
+// treatment, picked from a dropdown - cheap to add more without rebuilding geometry.
+const PRESETS: ReadonlyArray<Preset> = [
+    {name: "Spectrum Grid", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.015, tint: 0xffffff},
+    {name: "Tunnel Knot", shape: "torusKnot", hueBase: 0.78, hueSpread: 0.25, hueSpeed: 0.02, tint: 0xdd88ff},
+    {name: "Octa Pulse", shape: "octahedron", hueBase: 0.1, hueSpread: 0.35, hueSpeed: 0.01, tint: 0xffcc66},
+    {name: "Dodeca Dream", shape: "dodecahedron", hueBase: 0.52, hueSpread: 0.3, hueSpeed: 0.008, tint: 0x66ccff},
+    {name: "Phosphor Mono", shape: "icosahedron", hueBase: 0.33, hueSpread: 0.04, hueSpeed: 0.002, tint: 0x55ff88},
+    {name: "Sunset Bars", shape: "tetrahedron", hueBase: 0.02, hueSpread: 0.15, hueSpeed: 0.012, tint: 0xff8855},
+    {name: "Deep Space", shape: "torusKnot", hueBase: 0.63, hueSpread: 0.2, hueSpeed: 0.006, tint: 0x3355ff},
+    {name: "Neon Grid", shape: "octahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.05, tint: 0xffffff},
+    {name: "Mono Cyan", shape: "icosahedron", hueBase: 0.5, hueSpread: 0.02, hueSpeed: 0.004, tint: 0x33ffee},
+    {name: "Candy", shape: "dodecahedron", hueBase: 0.85, hueSpread: 0.6, hueSpeed: 0.03, tint: 0xff99dd},
+    {name: "Orbital System", shape: "icosahedron", hueBase: 0.58, hueSpread: 0.5, hueSpeed: 0.01, tint: 0xffffff, planets: true}
+]
+
+const PLANET_COUNT = 6
+
 export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const canvasHost: HTMLDivElement = <div className="canvas-host"/>
     const title = Inject.value("PROTRACKER+ 4.2B // WEBGL VIEW")
@@ -64,10 +94,18 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
                    reactivityValue.textContent = `${value.toFixed(2)}x`
                }}/>
     )
+    const presetSelect: HTMLSelectElement = (
+        <select>
+            {PRESETS.map(preset => <option value={preset.name}>{preset.name}</option>)}
+        </select>
+    )
+    const spinInput: HTMLInputElement = <input type="checkbox" checked/>
     const controlsBar: HTMLDivElement = (
         <div className="controls">
+            <label>Preset {presetSelect}</label>
             <label>Speed {speedInput} {speedValue}</label>
             <label>Reactivity {reactivityInput} {reactivityValue}</label>
+            <label>{spinInput} Free spin</label>
         </div>
     )
     const element: HTMLDivElement = <div className={className}>{controlsBar}{stage}</div>
@@ -146,12 +184,39 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     ;(floorGrid.material as THREE.Material).opacity = 0.35
     scene.add(floorGrid)
 
-    // A pulsing wireframe core, tying back to the ASCII 3D view's shapes.
-    const coreGeometry = new THREE.IcosahedronGeometry(1.4, 1)
+    // A pulsing wireframe core, tying back to the ASCII 3D view's shapes. Each preset just
+    // points it at a different pre-built geometry rather than rebuilding anything.
+    const coreGeometries: Record<CoreShape, THREE.BufferGeometry> = {
+        icosahedron: new THREE.IcosahedronGeometry(1.4, 1),
+        torusKnot: new THREE.TorusKnotGeometry(1, 0.34, 120, 16),
+        octahedron: new THREE.OctahedronGeometry(1.6, 1),
+        dodecahedron: new THREE.DodecahedronGeometry(1.4, 0),
+        tetrahedron: new THREE.TetrahedronGeometry(1.7, 1)
+    }
     const coreMaterial = new THREE.MeshBasicMaterial({color: 0x66ffe0, wireframe: true, transparent: true, opacity: 0.85})
-    const core = new THREE.Mesh(coreGeometry, coreMaterial)
+    const core = new THREE.Mesh(coreGeometries.icosahedron, coreMaterial)
     core.position.y = 3.2
     scene.add(core)
+
+    // "Orbital System" preset: a little sun-and-planets rig orbiting the core on its own
+    // inclined planes, each planet's size/speed pulled from a different spectrum bin.
+    const planetGroup = new THREE.Group()
+    planetGroup.visible = false
+    const planetGeometry = new THREE.SphereGeometry(0.22, 16, 16)
+    const planets: ReadonlyArray<{mesh: THREE.Mesh, radius: number, tilt: number, speed: number, bin: number}> =
+        Array.from({length: PLANET_COUNT}, (_, i) => {
+            const material = new THREE.MeshBasicMaterial({color: 0xffffff})
+            const mesh = new THREE.Mesh(planetGeometry, material)
+            const orbit = new THREE.Group()
+            orbit.rotation.x = (i / PLANET_COUNT) * 0.6
+            orbit.rotation.z = (i / PLANET_COUNT) * 1.3
+            orbit.add(mesh)
+            planetGroup.add(orbit)
+            mesh.userData.orbit = orbit
+            return {mesh, radius: 2.4 + i * 0.9, tilt: i * 0.5, speed: 0.25 + i * 0.07, bin: 20 + i * 30}
+        })
+    planetGroup.position.y = 3.2
+    scene.add(planetGroup)
 
     const starGeometry = new THREE.BufferGeometry()
     const starPositions = new Float32Array(STAR_COUNT * 3)
@@ -183,6 +248,23 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
 
     const spectrum = new Uint8Array(256)
     const audio: AudioState = {lastTime: performance.now(), bassEnvelope: 0, punch: 0}
+    let activePreset = PRESETS[0]
+    const floorTint = (floorGrid.material as THREE.Material & {color: THREE.Color}).color
+    const starTint = (stars.material as THREE.PointsMaterial).color
+
+    const applyPreset = (preset: Preset): void => {
+        activePreset = preset
+        core.geometry = coreGeometries[preset.shape]
+        core.visible = !preset.planets
+        planetGroup.visible = preset.planets === true
+        floorTint.set(preset.tint)
+        starTint.set(preset.tint)
+    }
+    applyPreset(PRESETS[0])
+    presetSelect.addEventListener("change", () => {
+        const preset = PRESETS.find(p => p.name === presetSelect.value)
+        if (preset !== undefined) {applyPreset(preset)}
+    })
 
     lifecycle.own(AnimationFrame.add(() => {
         if (element.closest("[hidden]") !== null) {return}
@@ -193,34 +275,52 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         const seconds = now * 0.001
         const speedValueNow = speed.getValue()
         const reactivityValueNow = reactivity.getValue()
+        const preset = activePreset
 
         for (let index = 0; index < BAR_COUNT; index++) {
             const level = spectrum[barBins[index]] / 255
-            const height = 0.05 + level * 7 * (0.55 + 0.6 * reactivityValueNow)
+            // Sizes go wild: a steep curve plus a punch-driven overshoot, so quiet bars stay
+            // low but a beat sends them shooting well past their steady-state height.
+            const height = 0.05 + Math.pow(level, 1.6) * 10 * (0.5 + reactivityValueNow) + punch * 3.5 * reactivityValueNow
             const i = Math.floor(index / GRID_SIZE), j = index % GRID_SIZE
             const dx = i - half, dz = j - half
             dummy.position.set(dx * BAR_SPACING, height / 2 - 0.5, dz * BAR_SPACING)
             dummy.scale.set(1, Math.max(0.02, height), 1)
             dummy.updateMatrix()
             bars.setMatrixAt(index, dummy.matrix)
-            const hue = (0.48 + barAngles[index] / (Math.PI * 2) + seconds * 0.015 * speedValueNow) % 1
+            const hue = (preset.hueBase + (barAngles[index] / (Math.PI * 2)) * preset.hueSpread + seconds * preset.hueSpeed * speedValueNow + 1) % 1
             const lightness = 0.08 + level * 0.65 + punch * 0.25 * reactivityValueNow
             bars.setColorAt(index, barColor.setHSL(hue, 0.9, Math.min(0.95, lightness)))
         }
         bars.instanceMatrix.needsUpdate = true
         if (bars.instanceColor) {bars.instanceColor.needsUpdate = true}
 
-        // Free-look on demand: dragging/scrolling takes the camera over immediately;
-        // left alone, it auto-orbits at a speed that picks up with the music.
-        controls.autoRotateSpeed = 0.6 * speedValueNow + punch * 4 * reactivityValueNow
+        // Free spin vs static: the checkbox simply flips OrbitControls' autoRotate; a
+        // drag/scroll/pinch still always takes over immediately either way.
+        controls.autoRotate = spinInput.checked
+        controls.autoRotateSpeed = 0.6 * speedValueNow + punch * 5 * reactivityValueNow
         controls.target.y = 1.2 + Math.sin(seconds * 0.2) * 0.3 * reactivityValueNow
         controls.update()
 
+        if (preset.planets) {
+            for (const planet of planets) {
+                const level = spectrum[planet.bin] / 255
+                const orbit = planet.mesh.userData.orbit as THREE.Group
+                orbit.rotation.y = seconds * planet.speed * speedValueNow + planet.tilt
+                planet.mesh.position.set(planet.radius * (1 + level * 0.15 * reactivityValueNow), 0, 0)
+                const scale = 0.6 + level * 2.2 * reactivityValueNow + punch * 1.2
+                planet.mesh.scale.setScalar(scale)
+                const hue = (preset.hueBase + planet.tilt * 0.12 + seconds * preset.hueSpeed) % 1
+                ;(planet.mesh.material as THREE.MeshBasicMaterial).color.setHSL(hue, 0.85, 0.3 + level * 0.5)
+            }
+        }
+
         core.rotation.x = seconds * 0.4 * speedValueNow
         core.rotation.y = seconds * 0.6 * speedValueNow
-        const coreScale = 1 + bass * 0.8 * reactivityValueNow + punch * 0.6
+        // Wild core pulse: bass alone nearly doubles it, a punch hit can triple it briefly.
+        const coreScale = 1 + bass * 1.6 * reactivityValueNow + punch * 1.4
         core.scale.setScalar(coreScale)
-        ;(core.material as THREE.MeshBasicMaterial).color.setHSL((seconds * 0.05) % 1, 0.8, 0.65)
+        ;(core.material as THREE.MeshBasicMaterial).color.setHSL((preset.hueBase + (seconds * preset.hueSpeed) % preset.hueSpread) % 1, 0.8, 0.65)
 
         axisGroup.rotation.y = seconds * 0.05 * speedValueNow
         stars.rotation.y = seconds * 0.01 * speedValueNow
@@ -241,8 +341,10 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     lifecycle.own(Terminable.create(() => {
         barGeometry.dispose()
         barMaterial.dispose()
-        coreGeometry.dispose()
+        Object.values(coreGeometries).forEach(geometry => geometry.dispose())
         coreMaterial.dispose()
+        planetGeometry.dispose()
+        planets.forEach(planet => (planet.mesh.material as THREE.MeshBasicMaterial).dispose())
         starGeometry.dispose()
         ;(stars.material as THREE.PointsMaterial).dispose()
         ;(floorGrid.material as THREE.Material).dispose()
