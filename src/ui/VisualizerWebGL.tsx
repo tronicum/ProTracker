@@ -9,17 +9,24 @@ import {EffectComposer} from "three/addons/postprocessing/EffectComposer.js"
 import {RenderPass} from "three/addons/postprocessing/RenderPass.js"
 import {UnrealBloomPass} from "three/addons/postprocessing/UnrealBloomPass.js"
 import {OutputPass} from "three/addons/postprocessing/OutputPass.js"
+import {OrbitControls} from "three/addons/controls/OrbitControls.js"
 
 const className = Html.adoptStyleSheet(css, "VisualizerWebGL")
 
-const BAR_COUNT = 48
-const RING_RADIUS = 5
-const STAR_COUNT = 500
+// A square grid of bars read radially outward from the center, like a classic
+// tracker/Winamp-era spectrum analyzer bent into a floor instead of a single row.
+const GRID_SIZE = 14
+const BAR_COUNT = GRID_SIZE * GRID_SIZE
+const BAR_SPACING = 0.5
+const STAR_COUNT = 900
 
 type Construct = {
     lifecycle: Lifecycle
     player: Player
 }
+
+const dummy = new THREE.Object3D()
+const barColor = new THREE.Color()
 
 export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const canvasHost: HTMLDivElement = <div className="canvas-host"/>
@@ -67,47 +74,102 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
 
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0x020305)
-    scene.fog = new THREE.FogExp2(0x020305, 0.028)
+    scene.fog = new THREE.FogExp2(0x020305, 0.022)
 
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100)
-    camera.position.set(0, 5, 12)
-    camera.lookAt(0, 0.5, 0)
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 120)
 
     const renderer = new THREE.WebGLRenderer({antialias: true, powerPreference: "high-performance"})
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio))
     canvasHost.appendChild(renderer.domElement)
 
+    // Free-look on demand: auto-orbits by itself, but a drag/scroll/pinch takes over
+    // immediately and OrbitControls' own damping hands auto-rotate back a moment after release.
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.target.set(0, 1.2, 0)
+    controls.enableDamping = true
+    controls.dampingFactor = 0.06
+    controls.minDistance = 4
+    controls.maxDistance = 45
+    controls.maxPolarAngle = Math.PI * 0.49 // stop just short of going under the floor
+    controls.autoRotate = true
+    controls.autoRotateSpeed = 0.6
+    camera.position.setFromSphericalCoords(15, Math.PI / 2 - 0.38, 0)
+    controls.update()
+
     const composer = new EffectComposer(renderer)
     composer.addPass(new RenderPass(scene, camera))
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 1.3, 0.65, 0.12)
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 1.5, 0.7, 0.1)
     composer.addPass(bloomPass)
     composer.addPass(new OutputPass())
 
-    const barGeometry = new THREE.BoxGeometry(0.34, 1, 0.34)
-    const bars: ReadonlyArray<THREE.Mesh> = Array.from({length: BAR_COUNT}, (_, i) => {
-        const angle = (i / BAR_COUNT) * Math.PI * 2
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x0affd9, emissive: 0x0affd9, emissiveIntensity: 0.35, roughness: 0.4, metalness: 0.2
-        })
-        const bar = new THREE.Mesh(barGeometry, material)
-        bar.position.set(Math.cos(angle) * RING_RADIUS, 0, Math.sin(angle) * RING_RADIUS)
-        scene.add(bar)
-        return bar
-    })
+    // The bar grid: one InstancedMesh, unlit (MeshBasicMaterial) so bar brightness maps
+    // directly to bloom intensity instead of depending on scene lighting.
+    const barGeometry = new THREE.BoxGeometry(0.3, 1, 0.3)
+    const barMaterial = new THREE.MeshBasicMaterial({color: 0xffffff})
+    const bars = new THREE.InstancedMesh(barGeometry, barMaterial, BAR_COUNT)
+    bars.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    const barBins = new Int32Array(BAR_COUNT)
+    const barAngles = new Float32Array(BAR_COUNT)
+    const half = (GRID_SIZE - 1) / 2
+    for (let i = 0; i < GRID_SIZE; i++) {
+        for (let j = 0; j < GRID_SIZE; j++) {
+            const index = i * GRID_SIZE + j
+            const dx = i - half, dz = j - half
+            const dist = Math.hypot(dx, dz) / Math.hypot(half, half) // 0 at center, 1 at corners
+            barBins[index] = Math.min(255, Math.floor(Math.pow(dist, 1.3) * 230))
+            barAngles[index] = Math.atan2(dz, dx)
+            dummy.position.set(dx * BAR_SPACING, 0, dz * BAR_SPACING)
+            dummy.scale.set(1, 0.01, 1)
+            dummy.updateMatrix()
+            bars.setMatrixAt(index, dummy.matrix)
+            bars.setColorAt(index, barColor.setHSL(0.48, 1, 0.1))
+        }
+    }
+    scene.add(bars)
+
+    // Faint XYZ axis gizmo at the origin, under the bar grid.
+    const axisGroup = new THREE.Group()
+    const axisLength = 9
+    const addAxis = (dir: THREE.Vector3, color: number): void => {
+        const points = [new THREE.Vector3(0, 0, 0), dir.clone().multiplyScalar(axisLength)]
+        const geometry = new THREE.BufferGeometry().setFromPoints(points)
+        const material = new THREE.LineBasicMaterial({color, transparent: true, opacity: 0.25})
+        axisGroup.add(new THREE.Line(geometry, material))
+    }
+    addAxis(new THREE.Vector3(1, 0, 0), 0xff3366)
+    addAxis(new THREE.Vector3(0, 1, 0), 0x33ff88)
+    addAxis(new THREE.Vector3(0, 0, 1), 0x3399ff)
+    scene.add(axisGroup)
+
+    const floorGrid = new THREE.GridHelper(GRID_SIZE * BAR_SPACING * 1.4, 28, 0x0affd9, 0x0a2a2e)
+    ;(floorGrid.material as THREE.Material).transparent = true
+    ;(floorGrid.material as THREE.Material).opacity = 0.35
+    scene.add(floorGrid)
+
+    // A pulsing wireframe core, tying back to the ASCII 3D view's shapes.
+    const coreGeometry = new THREE.IcosahedronGeometry(1.4, 1)
+    const coreMaterial = new THREE.MeshBasicMaterial({color: 0x66ffe0, wireframe: true, transparent: true, opacity: 0.85})
+    const core = new THREE.Mesh(coreGeometry, coreMaterial)
+    core.position.y = 3.2
+    scene.add(core)
 
     const starGeometry = new THREE.BufferGeometry()
     const starPositions = new Float32Array(STAR_COUNT * 3)
-    for (let i = 0; i < STAR_COUNT * 3; i++) {starPositions[i] = (Math.random() - 0.5) * 70}
+    const starColors = new Float32Array(STAR_COUNT * 3)
+    const starPalette = [new THREE.Color(0x3399ff), new THREE.Color(0xff33aa), new THREE.Color(0x66ffe0)]
+    for (let i = 0; i < STAR_COUNT; i++) {
+        starPositions[i * 3] = (Math.random() - 0.5) * 90
+        starPositions[i * 3 + 1] = (Math.random() - 0.5) * 90
+        starPositions[i * 3 + 2] = (Math.random() - 0.5) * 90
+        const color = starPalette[i % starPalette.length]
+        starColors[i * 3] = color.r; starColors[i * 3 + 1] = color.g; starColors[i * 3 + 2] = color.b
+    }
     starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3))
+    starGeometry.setAttribute("color", new THREE.BufferAttribute(starColors, 3))
     const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({
-        color: 0x3366ff, size: 0.07, transparent: true, opacity: 0.55
+        size: 0.09, transparent: true, opacity: 0.8, vertexColors: true
     }))
     scene.add(stars)
-
-    scene.add(new THREE.AmbientLight(0x1a2a33, 0.7))
-    const keyLight = new THREE.PointLight(0x0affd9, 3, 40)
-    keyLight.position.set(0, 7, 2)
-    scene.add(keyLight)
 
     const resize = (): boolean => {
         const width = canvasHost.clientWidth, height = canvasHost.clientHeight
@@ -127,25 +189,45 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         if (!resize()) {return}
         player.getSpectrum(spectrum)
         const now = performance.now()
-        const {mid, punch} = sampleBands(spectrum, now, audio)
+        const {bass, mid, treble, punch} = sampleBands(spectrum, now, audio)
         const seconds = now * 0.001
         const speedValueNow = speed.getValue()
         const reactivityValueNow = reactivity.getValue()
 
-        for (let i = 0; i < BAR_COUNT; i++) {
-            const bin = Math.floor(Math.pow(i / (BAR_COUNT - 1), 1.5) * 200)
-            const level = spectrum[bin] / 255
-            const bar = bars[i]
-            const height = 0.25 + level * 5 * (0.6 + 0.6 * reactivityValueNow)
-            bar.scale.y = height
-            bar.position.y = height / 2 - 0.5
-            const material = bar.material as THREE.MeshStandardMaterial
-            material.emissiveIntensity = 0.3 + level * 2.2 + punch * 1.6 * reactivityValueNow
+        for (let index = 0; index < BAR_COUNT; index++) {
+            const level = spectrum[barBins[index]] / 255
+            const height = 0.05 + level * 7 * (0.55 + 0.6 * reactivityValueNow)
+            const i = Math.floor(index / GRID_SIZE), j = index % GRID_SIZE
+            const dx = i - half, dz = j - half
+            dummy.position.set(dx * BAR_SPACING, height / 2 - 0.5, dz * BAR_SPACING)
+            dummy.scale.set(1, Math.max(0.02, height), 1)
+            dummy.updateMatrix()
+            bars.setMatrixAt(index, dummy.matrix)
+            const hue = (0.48 + barAngles[index] / (Math.PI * 2) + seconds * 0.015 * speedValueNow) % 1
+            const lightness = 0.08 + level * 0.65 + punch * 0.25 * reactivityValueNow
+            bars.setColorAt(index, barColor.setHSL(hue, 0.9, Math.min(0.95, lightness)))
         }
-        scene.rotation.y = seconds * 0.08 * speedValueNow
-        stars.rotation.y = seconds * 0.015 * speedValueNow
-        keyLight.intensity = 3 + mid * 6 * reactivityValueNow
-        bloomPass.strength = 1.1 + punch * 1.8 * reactivityValueNow
+        bars.instanceMatrix.needsUpdate = true
+        if (bars.instanceColor) {bars.instanceColor.needsUpdate = true}
+
+        // Free-look on demand: dragging/scrolling takes the camera over immediately;
+        // left alone, it auto-orbits at a speed that picks up with the music.
+        controls.autoRotateSpeed = 0.6 * speedValueNow + punch * 4 * reactivityValueNow
+        controls.target.y = 1.2 + Math.sin(seconds * 0.2) * 0.3 * reactivityValueNow
+        controls.update()
+
+        core.rotation.x = seconds * 0.4 * speedValueNow
+        core.rotation.y = seconds * 0.6 * speedValueNow
+        const coreScale = 1 + bass * 0.8 * reactivityValueNow + punch * 0.6
+        core.scale.setScalar(coreScale)
+        ;(core.material as THREE.MeshBasicMaterial).color.setHSL((seconds * 0.05) % 1, 0.8, 0.65)
+
+        axisGroup.rotation.y = seconds * 0.05 * speedValueNow
+        stars.rotation.y = seconds * 0.01 * speedValueNow
+        stars.rotation.x = Math.sin(seconds * 0.03) * 0.1
+
+        bloomPass.strength = 1.3 + punch * 2 * reactivityValueNow + treble * 0.4
+        ;(floorGrid.material as THREE.Material).opacity = 0.25 + mid * 0.5 * reactivityValueNow
 
         const status = player.currentStatus
         stateLine.value = player.playing.getValue() ? "PLAYING" : "STANDBY"
@@ -158,9 +240,18 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
 
     lifecycle.own(Terminable.create(() => {
         barGeometry.dispose()
+        barMaterial.dispose()
+        coreGeometry.dispose()
+        coreMaterial.dispose()
         starGeometry.dispose()
-        bars.forEach(bar => (bar.material as THREE.MeshStandardMaterial).dispose())
         ;(stars.material as THREE.PointsMaterial).dispose()
+        ;(floorGrid.material as THREE.Material).dispose()
+        floorGrid.geometry.dispose()
+        axisGroup.children.forEach(child => {
+            const line = child as THREE.Line
+            line.geometry.dispose()
+            ;(line.material as THREE.Material).dispose()
+        })
         composer.dispose()
         renderer.dispose()
     }))
