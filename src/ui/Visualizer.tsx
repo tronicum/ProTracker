@@ -81,10 +81,10 @@ export const Visualizer = ({lifecycle, player}: Construct) => {
     const screen: HTMLPreElement = <pre role="img" aria-label="Music-reactive ASCII spectrum"/>
     const element: HTMLDivElement = <div className={className}>{screen}</div>
     const spectrum = new Uint8Array(256)
-    lifecycle.own(AnimationFrame.add(time => {
+    lifecycle.own(AnimationFrame.add(() => {
         if (element.closest("[hidden]") !== null || element.clientWidth === 0) {return}
         player.getSpectrum(spectrum)
-        draw(screen, spectrum, player, time)
+        draw(screen, spectrum, player, performance.now())
     }))
     return element
 }

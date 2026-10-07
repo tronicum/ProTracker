@@ -25,7 +25,7 @@ export class Player {
 
     get currentStatus(): Nullable<Status> {return this.status}
 
-    getSpectrum(target: Uint8Array): boolean {
+    getSpectrum(target: Uint8Array<ArrayBuffer>): boolean {
         if (this.analyser === null) {
             target.fill(0)
             return false
