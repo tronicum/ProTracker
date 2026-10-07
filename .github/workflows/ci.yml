@@ -16,6 +16,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run build
 
   # Note: the WASM emulator (`npm run wasm` -> emu/build.sh) is intentionally
