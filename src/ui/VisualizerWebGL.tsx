@@ -103,45 +103,48 @@ const VGA_SCROLLTEXT =
 type VgaBounce = {x: number, y: number, vx: number, vy: number, colorIndex: number, pulse: number}
 
 // ---- Retro OS Museum: a little gallery of floating flat screens, each one a canvas-texture
-// plane (the same trick as the VGA tribute screen) looping a stylized, non-pixel-exact nod to a
-// classic command-line/boot screen. All names/wording below are original fan-tribute flavor
-// text - no real OS's actual boot banner, slogan, or logo is reproduced verbatim.
+// plane (the same trick as the VGA tribute screen) looping a stylized homage to a classic
+// command-line/desktop look - generic UI conventions (prompt syntax, window chrome, directory
+// listing layout, color scheme) rather than any real OS's actual logo or exact boot banner text.
+type MuseumKind = "dos" | "c64" | "gui" | "unix"
+
 type MuseumProfile = {
     name: string
+    kind: MuseumKind
     bg: string
     fg: string
     accent: string
     prompt: string
-    lines: ReadonlyArray<string>
+    detail: ReadonlyArray<string> // dos: extra DIR-style lines; gui: icon labels; unix: boot log lines
 }
 
 const MUSEUM_PROFILES: ReadonlyArray<MuseumProfile> = [
-    {name: "MS-DOS 3.3", bg: "#000000", fg: "#AAAAAA", accent: "#55FFFF", prompt: "C:\\>",
-        lines: ["MS-DOS-STYLE 3.3 (FAN TRIBUTE)", "", "DIR", "VOLUME IN DRIVE C HAS NO LABEL"]},
-    {name: "DR-DOS", bg: "#000000", fg: "#55FF55", accent: "#FFFF55", prompt: "A>",
-        lines: ["DR-DOS-STYLE (FAN TRIBUTE)", "", "A LIGHTWEIGHT MS-DOS ALTERNATIVE"]},
-    {name: "Novell DOS", bg: "#0000AA", fg: "#FFFFFF", accent: "#55FFFF", prompt: "C:\\>",
-        lines: ["NOVELL DOS-STYLE (FAN TRIBUTE)", "", "DR-DOS'S SUCCESSOR, NETWORK-READY"]},
-    {name: "Amiga Workbench", bg: "#AAAAAA", fg: "#000000", accent: "#0000AA", prompt: "1>",
-        lines: ["AMIGA-STYLE WORKBENCH (FAN TRIBUTE)", "", "INSERT WORKBENCH DISK IN DF0:"]},
-    {name: "Atari TOS", bg: "#FFFFFF", fg: "#000000", accent: "#AA0000", prompt: "A>",
-        lines: ["ATARI-STYLE TOS (FAN TRIBUTE)", "", "GEM-STYLE DESKTOP 1.0"]},
-    {name: "Commodore 64", bg: "#4040C0", fg: "#A0A0FF", accent: "#FFFFFF", prompt: "READY.",
-        lines: ["COMMODORE-STYLE BASIC (FAN TRIBUTE)", "", "64K RAM SYSTEM"]},
-    {name: "Windows 3.x", bg: "#008080", fg: "#FFFFFF", accent: "#C0C0C0", prompt: "",
-        lines: ["WINDOWS-STYLE 3.X (FAN TRIBUTE)", "", "PROGRAM MANAGER"]},
-    {name: "OS/2 Warp", bg: "#000066", fg: "#66CCFF", accent: "#FFFFFF", prompt: "[C:\\]",
-        lines: ["OS/2-STYLE WARP (FAN TRIBUTE)", "", "MULTITASKING FOR THE DESKTOP"]},
-    {name: "Red Hat Linux", bg: "#000000", fg: "#FF5555", accent: "#FFFFFF", prompt: "login:",
-        lines: ["LINUX-STYLE DISTRIBUTION (FAN TRIBUTE)", "", "KERNEL BOOTING ..."]},
-    {name: "SCO UNIX", bg: "#000000", fg: "#00AAAA", accent: "#FFFFFF", prompt: "login:",
-        lines: ["SCO-STYLE UNIX (FAN TRIBUTE)", "", "OPEN DESKTOP ENVIRONMENT"]},
-    {name: "Solaris", bg: "#000000", fg: "#FFAA00", accent: "#FFFFFF", prompt: "login:",
-        lines: ["SOLARIS-STYLE UNIX (FAN TRIBUTE)", "", "SUNOS-STYLE KERNEL"]}
+    {name: "MS-DOS 3.3", kind: "dos", bg: "#000000", fg: "#AAAAAA", accent: "#FFFFFF", prompt: "C:\\>",
+        detail: ["TRACKER   MOD     47845  01-01-90", "AUTOEXEC  BAT        64  01-01-90", "CONFIG    SYS        12  01-01-90"]},
+    {name: "DR-DOS", kind: "dos", bg: "#000000", fg: "#55FF55", accent: "#FFFF55", prompt: "A>",
+        detail: ["COMMAND   COM     23210  03-07-91", "DRDOS     SYS      8192  03-07-91"]},
+    {name: "Novell DOS", kind: "dos", bg: "#0000AA", fg: "#FFFFFF", accent: "#55FFFF", prompt: "C:\\>",
+        detail: ["NWCLIENT  EXE     51200  06-15-94", "NET       CFG       512  06-15-94"]},
+    {name: "Amiga Workbench", kind: "gui", bg: "#9999BB", fg: "#000000", accent: "#0000AA", prompt: "",
+        detail: ["Disk1", "Trash", "Tools", "System"]},
+    {name: "Atari TOS", kind: "gui", bg: "#FFFFFF", fg: "#000000", accent: "#000000", prompt: "",
+        detail: ["Floppy", "Trash", "App", "Folder"]},
+    {name: "Commodore 64", kind: "c64", bg: "#4040C0", fg: "#A0C0FF", accent: "#8080E0", prompt: "READY.",
+        detail: []},
+    {name: "Windows 3.x", kind: "gui", bg: "#008080", fg: "#000000", accent: "#C0C0C0", prompt: "",
+        detail: ["File Mgr", "Write", "Paint", "Clock"]},
+    {name: "OS/2 Warp", kind: "gui", bg: "#101040", fg: "#FFFFFF", accent: "#8888CC", prompt: "",
+        detail: ["Drives", "Templates", "Shredder"]},
+    {name: "Red Hat Linux", kind: "unix", bg: "#000000", fg: "#FF5555", accent: "#FFFFFF", prompt: "login:",
+        detail: ["Starting syslogd ...", "Starting network ...", "Mounting filesystems ..."]},
+    {name: "SCO UNIX", kind: "unix", bg: "#000000", fg: "#00AAAA", accent: "#FFFFFF", prompt: "login:",
+        detail: ["INIT: entering run level 3", "Starting OpenDesktop ...", "cron started"]},
+    {name: "Solaris", kind: "unix", bg: "#000000", fg: "#FFAA00", accent: "#FFFFFF", prompt: "login:",
+        detail: ["SunOS Release 5.6", "checking filesystems ...", "starting NIS services ..."]}
 ]
 
-const MUSEUM_FB_WIDTH = 220
-const MUSEUM_FB_HEIGHT = 150
+const MUSEUM_FB_WIDTH = 256
+const MUSEUM_FB_HEIGHT = 176
 
 type MuseumScreen = {
     canvas: HTMLCanvasElement
@@ -158,26 +161,105 @@ type MuseumScreen = {
 
 const museumGeometry = new THREE.PlaneGeometry(2.6, 1.77)
 
-const drawMuseumScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+const drawDosScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
     ctx.fillStyle = profile.bg
     ctx.fillRect(0, 0, w, h)
-    ctx.strokeStyle = profile.accent
-    ctx.lineWidth = 3
-    ctx.strokeRect(1.5, 1.5, w - 3, h - 3)
+    ctx.font = "11px ui-monospace, Menlo, Consolas, monospace"
     ctx.textBaseline = "top"
     ctx.textAlign = "left"
-    ctx.font = "bold 11px ui-monospace, Menlo, Consolas, monospace"
-    ctx.fillStyle = profile.accent
-    ctx.fillText(profile.name.toUpperCase(), 10, 10)
-    ctx.font = "10px ui-monospace, Menlo, Consolas, monospace"
     ctx.fillStyle = profile.fg
-    let y = 30
-    for (const line of profile.lines) {
-        ctx.fillText(line, 10, y)
-        y += 15
-    }
+    let y = 10
+    ctx.fillText(`${profile.prompt}DIR`, 10, y); y += 16
+    ctx.fillText(" VOLUME IN DRIVE HAS NO LABEL", 10, y); y += 14
+    ctx.fillText(" DIRECTORY OF \\", 10, y); y += 18
+    for (const entry of profile.detail) {ctx.fillText(" " + entry, 10, y); y += 14}
+    y += 4
+    ctx.fillText(`   ${profile.detail.length} FILE(S)   655360 BYTES FREE`, 10, y); y += 20
     const blink = Math.floor(seconds * 2) % 2 === 0
     ctx.fillText(profile.prompt + (blink ? "_" : " "), 10, y)
+}
+
+const drawC64Screen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    const border = 14
+    ctx.fillStyle = profile.accent
+    ctx.fillRect(0, 0, w, h)
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(border, border, w - border * 2, h - border * 2)
+    ctx.font = "11px ui-monospace, Menlo, Consolas, monospace"
+    ctx.textBaseline = "top"
+    ctx.textAlign = "center"
+    ctx.fillStyle = profile.fg
+    ctx.fillText("**** COMMODORE-STYLE 64 BASIC ****", w / 2, border + 10)
+    ctx.fillText("64K RAM SYSTEM  38911 BASIC BYTES FREE", w / 2, border + 28)
+    ctx.textAlign = "left"
+    const blink = Math.floor(seconds * 2) % 2 === 0
+    ctx.fillText(profile.prompt, border + 6, border + 54)
+    if (blink) {ctx.fillRect(border + 6 + profile.prompt.length * 6.6, border + 54, 7, 11)}
+}
+
+const MUSEUM_ICON_COLOR = "#FFD966"
+
+const drawGuiScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    // A simple window: title bar + body, with a little icon grid inside.
+    const winX = 10, winY = 10, winW = w - 20, winH = h - 20
+    ctx.fillStyle = profile.accent
+    ctx.fillRect(winX, winY, winW, 16)
+    ctx.fillStyle = profile.fg === "#000000" ? "#FFFFFF" : "#000000"
+    ctx.font = "bold 10px ui-monospace, Menlo, Consolas, monospace"
+    ctx.textBaseline = "top"
+    ctx.textAlign = "left"
+    ctx.fillText(profile.name.toUpperCase(), winX + 5, winY + 3)
+    ctx.fillStyle = "#DDDDDD"
+    ctx.fillRect(winX, winY + 16, winW, winH - 16)
+    ctx.strokeStyle = "#555555"
+    ctx.strokeRect(winX, winY, winW, winH)
+    const iconSize = 24
+    ctx.font = "8px ui-monospace, Menlo, Consolas, monospace"
+    ctx.textAlign = "center"
+    profile.detail.forEach((label, i) => {
+        const col = i % 4, row = Math.floor(i / 4)
+        const ix = winX + 16 + col * 56
+        const iy = winY + 30 + row * 50 + Math.sin(seconds * 0.6 + i) * 1.5
+        ctx.fillStyle = MUSEUM_ICON_COLOR
+        ctx.fillRect(ix, iy, iconSize, iconSize * 0.8)
+        ctx.fillStyle = "#000000"
+        ctx.fillText(label, ix + iconSize / 2, iy + iconSize * 0.8 + 3)
+    })
+}
+
+const drawUnixScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    ctx.font = "10px ui-monospace, Menlo, Consolas, monospace"
+    ctx.textBaseline = "top"
+    ctx.textAlign = "left"
+    ctx.fillStyle = profile.fg
+    let y = 10
+    for (const line of profile.detail) {ctx.fillText(line, 10, y); y += 14}
+    y += 8
+    ctx.fillStyle = profile.accent
+    const cycle = seconds % 8
+    const username = "guest"
+    const typed = cycle < 2 ? username.slice(0, Math.floor((cycle / 2) * username.length)) : username
+    const blink = Math.floor(seconds * 2) % 2 === 0
+    const cursor = cycle < 2.3 ? (blink ? "_" : " ") : ""
+    ctx.fillText(`${profile.prompt} ${typed}${cursor}`, 10, y)
+    if (cycle >= 2.3) {
+        y += 16
+        ctx.fillStyle = profile.fg
+        ctx.fillText(cycle < 5 ? "Password: ********" : "Last login: today", 10, y)
+    }
+}
+
+const drawMuseumScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    switch (profile.kind) {
+        case "dos": return drawDosScreen(ctx, w, h, profile, seconds)
+        case "c64": return drawC64Screen(ctx, w, h, profile, seconds)
+        case "gui": return drawGuiScreen(ctx, w, h, profile, seconds)
+        case "unix": return drawUnixScreen(ctx, w, h, profile, seconds)
+    }
 }
 
 const drawVgaDiamond = (ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, color: string): void => {
