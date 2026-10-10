@@ -43,7 +43,7 @@ type Preset = {
     vga?: boolean      // swap everything for the VGA tribute screen, floating as a real plane in the scene
     cityscape?: boolean // turn the bar grid into a rain-lit skyline silhouette, Blade-Runner style
     folding?: boolean  // swap the grid/core for hinged slabs that fold against each other, Inception style
-    museum?: boolean   // float a little gallery of retro OS boot/prompt screens around the scene
+    museumGallery?: "os" | "games" // float a little gallery of retro OS or arcade-game screens around the scene
     coreScale?: number // multiplies the core object's base size (default 1) - the "object" side of the balance
     barScale?: number  // multiplies the bar grid's reactive amplitude (default 1) - the "EQ" side of the balance
 }
@@ -67,7 +67,8 @@ const PRESETS: ReadonlyArray<Preset> = [
     {name: "VGA Tribute", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.01, tint: 0xffffff, vga: true},
     {name: "Neon City", shape: "icosahedron", hueBase: 0.85, hueSpread: 0.35, hueSpeed: 0.02, tint: 0xffffff, cityscape: true},
     {name: "Folding Dream", shape: "icosahedron", hueBase: 0.6, hueSpread: 0.5, hueSpeed: 0.01, tint: 0xffffff, folding: true},
-    {name: "Retro OS Museum", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.01, tint: 0xffffff, museum: true}
+    {name: "Retro OS Museum", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.01, tint: 0xffffff, museumGallery: "os"},
+    {name: "Arcade Game Museum", shape: "icosahedron", hueBase: 0.5, hueSpread: 1, hueSpeed: 0.01, tint: 0xffffff, museumGallery: "games"}
 ]
 
 const PLANET_COUNT = 6
@@ -103,45 +104,65 @@ const VGA_SCROLLTEXT =
 type VgaBounce = {x: number, y: number, vx: number, vy: number, colorIndex: number, pulse: number}
 
 // ---- Retro OS Museum: a little gallery of floating flat screens, each one a canvas-texture
-// plane (the same trick as the VGA tribute screen) looping a stylized, non-pixel-exact nod to a
-// classic command-line/boot screen. All names/wording below are original fan-tribute flavor
-// text - no real OS's actual boot banner, slogan, or logo is reproduced verbatim.
+// plane (the same trick as the VGA tribute screen) looping a stylized homage to a classic
+// command-line/desktop look - generic UI conventions (prompt syntax, window chrome, directory
+// listing layout, color scheme) rather than any real OS's actual logo or exact boot banner text.
+type MuseumKind = "dos" | "c64" | "gui" | "unix" | "shooter" | "maze" | "castle" | "platformer" | "racer" | "puzzle"
+
 type MuseumProfile = {
     name: string
+    kind: MuseumKind
     bg: string
     fg: string
     accent: string
     prompt: string
-    lines: ReadonlyArray<string>
+    detail: ReadonlyArray<string> // dos: extra DIR-style lines; gui: icon labels; unix: boot log lines
 }
 
-const MUSEUM_PROFILES: ReadonlyArray<MuseumProfile> = [
-    {name: "MS-DOS 3.3", bg: "#000000", fg: "#AAAAAA", accent: "#55FFFF", prompt: "C:\\>",
-        lines: ["MS-DOS-STYLE 3.3 (FAN TRIBUTE)", "", "DIR", "VOLUME IN DRIVE C HAS NO LABEL"]},
-    {name: "DR-DOS", bg: "#000000", fg: "#55FF55", accent: "#FFFF55", prompt: "A>",
-        lines: ["DR-DOS-STYLE (FAN TRIBUTE)", "", "A LIGHTWEIGHT MS-DOS ALTERNATIVE"]},
-    {name: "Novell DOS", bg: "#0000AA", fg: "#FFFFFF", accent: "#55FFFF", prompt: "C:\\>",
-        lines: ["NOVELL DOS-STYLE (FAN TRIBUTE)", "", "DR-DOS'S SUCCESSOR, NETWORK-READY"]},
-    {name: "Amiga Workbench", bg: "#AAAAAA", fg: "#000000", accent: "#0000AA", prompt: "1>",
-        lines: ["AMIGA-STYLE WORKBENCH (FAN TRIBUTE)", "", "INSERT WORKBENCH DISK IN DF0:"]},
-    {name: "Atari TOS", bg: "#FFFFFF", fg: "#000000", accent: "#AA0000", prompt: "A>",
-        lines: ["ATARI-STYLE TOS (FAN TRIBUTE)", "", "GEM-STYLE DESKTOP 1.0"]},
-    {name: "Commodore 64", bg: "#4040C0", fg: "#A0A0FF", accent: "#FFFFFF", prompt: "READY.",
-        lines: ["COMMODORE-STYLE BASIC (FAN TRIBUTE)", "", "64K RAM SYSTEM"]},
-    {name: "Windows 3.x", bg: "#008080", fg: "#FFFFFF", accent: "#C0C0C0", prompt: "",
-        lines: ["WINDOWS-STYLE 3.X (FAN TRIBUTE)", "", "PROGRAM MANAGER"]},
-    {name: "OS/2 Warp", bg: "#000066", fg: "#66CCFF", accent: "#FFFFFF", prompt: "[C:\\]",
-        lines: ["OS/2-STYLE WARP (FAN TRIBUTE)", "", "MULTITASKING FOR THE DESKTOP"]},
-    {name: "Red Hat Linux", bg: "#000000", fg: "#FF5555", accent: "#FFFFFF", prompt: "login:",
-        lines: ["LINUX-STYLE DISTRIBUTION (FAN TRIBUTE)", "", "KERNEL BOOTING ..."]},
-    {name: "SCO UNIX", bg: "#000000", fg: "#00AAAA", accent: "#FFFFFF", prompt: "login:",
-        lines: ["SCO-STYLE UNIX (FAN TRIBUTE)", "", "OPEN DESKTOP ENVIRONMENT"]},
-    {name: "Solaris", bg: "#000000", fg: "#FFAA00", accent: "#FFFFFF", prompt: "login:",
-        lines: ["SOLARIS-STYLE UNIX (FAN TRIBUTE)", "", "SUNOS-STYLE KERNEL"]}
+const MUSEUM_OS_PROFILES: ReadonlyArray<MuseumProfile> = [
+    {name: "MS-DOS 3.3", kind: "dos", bg: "#000000", fg: "#AAAAAA", accent: "#FFFFFF", prompt: "C:\\>",
+        detail: ["TRACKER   MOD     47845  01-01-90", "AUTOEXEC  BAT        64  01-01-90", "CONFIG    SYS        12  01-01-90"]},
+    {name: "DR-DOS", kind: "dos", bg: "#000000", fg: "#55FF55", accent: "#FFFF55", prompt: "A>",
+        detail: ["COMMAND   COM     23210  03-07-91", "DRDOS     SYS      8192  03-07-91"]},
+    {name: "Novell DOS", kind: "dos", bg: "#0000AA", fg: "#FFFFFF", accent: "#55FFFF", prompt: "C:\\>",
+        detail: ["NWCLIENT  EXE     51200  06-15-94", "NET       CFG       512  06-15-94"]},
+    {name: "Amiga Workbench", kind: "gui", bg: "#9999BB", fg: "#000000", accent: "#0000AA", prompt: "",
+        detail: ["Disk1", "Trash", "Tools", "System"]},
+    {name: "Atari TOS", kind: "gui", bg: "#FFFFFF", fg: "#000000", accent: "#000000", prompt: "",
+        detail: ["Floppy", "Trash", "App", "Folder"]},
+    {name: "Commodore 64", kind: "c64", bg: "#4040C0", fg: "#A0C0FF", accent: "#8080E0", prompt: "READY.",
+        detail: []},
+    {name: "Windows 3.x", kind: "gui", bg: "#008080", fg: "#000000", accent: "#C0C0C0", prompt: "",
+        detail: ["File Mgr", "Write", "Paint", "Clock"]},
+    {name: "OS/2 Warp", kind: "gui", bg: "#101040", fg: "#FFFFFF", accent: "#8888CC", prompt: "",
+        detail: ["Drives", "Templates", "Shredder"]},
+    {name: "Red Hat Linux", kind: "unix", bg: "#000000", fg: "#FF5555", accent: "#FFFFFF", prompt: "login:",
+        detail: ["Starting syslogd ...", "Starting network ...", "Mounting filesystems ..."]},
+    {name: "SCO UNIX", kind: "unix", bg: "#000000", fg: "#00AAAA", accent: "#FFFFFF", prompt: "login:",
+        detail: ["INIT: entering run level 3", "Starting OpenDesktop ...", "cron started"]},
+    {name: "Solaris", kind: "unix", bg: "#000000", fg: "#FFAA00", accent: "#FFFFFF", prompt: "login:",
+        detail: ["SunOS Release 5.6", "checking filesystems ...", "starting NIS services ..."]}
 ]
 
-const MUSEUM_FB_WIDTH = 220
-const MUSEUM_FB_HEIGHT = 150
+// Original, made-up titles evoking classic arcade/home-computer genres (shooter, maze-chase,
+// castle-siege artillery duel, platformer, pseudo-3D racer, falling-block puzzle) - not real
+// game names, logos, or character designs, just the generic visual conventions of each genre.
+const MUSEUM_GAME_PROFILES: ReadonlyArray<MuseumProfile> = [
+    {name: "Galaxy Defender", kind: "shooter", bg: "#000010", fg: "#FFFFFF", accent: "#55FF55", prompt: "INSERT COIN", detail: []},
+    {name: "Asteroid Field", kind: "shooter", bg: "#000000", fg: "#FFFFFF", accent: "#FFFFFF", prompt: "INSERT COIN", detail: []},
+    {name: "Maze Muncher", kind: "maze", bg: "#000000", fg: "#FF5555", accent: "#FFFF55", prompt: "PRESS START", detail: []},
+    {name: "Dungeon Delver", kind: "maze", bg: "#100800", fg: "#CC8844", accent: "#FFAA33", prompt: "PRESS START", detail: []},
+    {name: "Boulder Run", kind: "maze", bg: "#1a0f00", fg: "#AA7733", accent: "#FFCC55", prompt: "PRESS START", detail: []},
+    {name: "Castle Siege", kind: "castle", bg: "#335577", fg: "#FFFFFF", accent: "#777777", prompt: "PRESS FIRE", detail: []},
+    {name: "Block Jumper", kind: "platformer", bg: "#4488CC", fg: "#FFFFFF", accent: "#FF8833", prompt: "PRESS START", detail: []},
+    {name: "Pixel Quest", kind: "platformer", bg: "#225522", fg: "#FFFFFF", accent: "#FFDD33", prompt: "PRESS START", detail: []},
+    {name: "Turbo Rally", kind: "racer", bg: "#222222", fg: "#FFFFFF", accent: "#FF3333", prompt: "GET READY", detail: []},
+    {name: "Gem Puzzle", kind: "puzzle", bg: "#110022", fg: "#FFFFFF", accent: "#FF55FF", prompt: "PRESS START", detail: []},
+    {name: "Space Trader", kind: "puzzle", bg: "#000820", fg: "#55DDFF", accent: "#FFCC33", prompt: "PRESS START", detail: ["CREDITS: 1000", "FUEL: 85%"]}
+]
+
+const MUSEUM_FB_WIDTH = 256
+const MUSEUM_FB_HEIGHT = 176
 
 type MuseumScreen = {
     canvas: HTMLCanvasElement
@@ -158,26 +179,307 @@ type MuseumScreen = {
 
 const museumGeometry = new THREE.PlaneGeometry(2.6, 1.77)
 
-const drawMuseumScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+const drawDosScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
     ctx.fillStyle = profile.bg
     ctx.fillRect(0, 0, w, h)
-    ctx.strokeStyle = profile.accent
-    ctx.lineWidth = 3
-    ctx.strokeRect(1.5, 1.5, w - 3, h - 3)
+    ctx.font = "11px ui-monospace, Menlo, Consolas, monospace"
     ctx.textBaseline = "top"
     ctx.textAlign = "left"
-    ctx.font = "bold 11px ui-monospace, Menlo, Consolas, monospace"
-    ctx.fillStyle = profile.accent
-    ctx.fillText(profile.name.toUpperCase(), 10, 10)
-    ctx.font = "10px ui-monospace, Menlo, Consolas, monospace"
     ctx.fillStyle = profile.fg
-    let y = 30
-    for (const line of profile.lines) {
-        ctx.fillText(line, 10, y)
-        y += 15
-    }
+    let y = 10
+    ctx.fillText(`${profile.prompt}DIR`, 10, y); y += 16
+    ctx.fillText(" VOLUME IN DRIVE HAS NO LABEL", 10, y); y += 14
+    ctx.fillText(" DIRECTORY OF \\", 10, y); y += 18
+    for (const entry of profile.detail) {ctx.fillText(" " + entry, 10, y); y += 14}
+    y += 4
+    ctx.fillText(`   ${profile.detail.length} FILE(S)   655360 BYTES FREE`, 10, y); y += 20
     const blink = Math.floor(seconds * 2) % 2 === 0
     ctx.fillText(profile.prompt + (blink ? "_" : " "), 10, y)
+}
+
+const drawC64Screen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    const border = 14
+    ctx.fillStyle = profile.accent
+    ctx.fillRect(0, 0, w, h)
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(border, border, w - border * 2, h - border * 2)
+    ctx.font = "11px ui-monospace, Menlo, Consolas, monospace"
+    ctx.textBaseline = "top"
+    ctx.textAlign = "center"
+    ctx.fillStyle = profile.fg
+    ctx.fillText("**** COMMODORE-STYLE 64 BASIC ****", w / 2, border + 10)
+    ctx.fillText("64K RAM SYSTEM  38911 BASIC BYTES FREE", w / 2, border + 28)
+    ctx.textAlign = "left"
+    const blink = Math.floor(seconds * 2) % 2 === 0
+    ctx.fillText(profile.prompt, border + 6, border + 54)
+    if (blink) {ctx.fillRect(border + 6 + profile.prompt.length * 6.6, border + 54, 7, 11)}
+}
+
+const MUSEUM_ICON_COLOR = "#FFD966"
+
+const drawGuiScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    // A simple window: title bar + body, with a little icon grid inside.
+    const winX = 10, winY = 10, winW = w - 20, winH = h - 20
+    ctx.fillStyle = profile.accent
+    ctx.fillRect(winX, winY, winW, 16)
+    ctx.fillStyle = profile.fg === "#000000" ? "#FFFFFF" : "#000000"
+    ctx.font = "bold 10px ui-monospace, Menlo, Consolas, monospace"
+    ctx.textBaseline = "top"
+    ctx.textAlign = "left"
+    ctx.fillText(profile.name.toUpperCase(), winX + 5, winY + 3)
+    ctx.fillStyle = "#DDDDDD"
+    ctx.fillRect(winX, winY + 16, winW, winH - 16)
+    ctx.strokeStyle = "#555555"
+    ctx.strokeRect(winX, winY, winW, winH)
+    const iconSize = 24
+    ctx.font = "8px ui-monospace, Menlo, Consolas, monospace"
+    ctx.textAlign = "center"
+    profile.detail.forEach((label, i) => {
+        const col = i % 4, row = Math.floor(i / 4)
+        const ix = winX + 16 + col * 56
+        const iy = winY + 30 + row * 50 + Math.sin(seconds * 0.6 + i) * 1.5
+        ctx.fillStyle = MUSEUM_ICON_COLOR
+        ctx.fillRect(ix, iy, iconSize, iconSize * 0.8)
+        ctx.fillStyle = "#000000"
+        ctx.fillText(label, ix + iconSize / 2, iy + iconSize * 0.8 + 3)
+    })
+}
+
+const drawUnixScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    ctx.font = "10px ui-monospace, Menlo, Consolas, monospace"
+    ctx.textBaseline = "top"
+    ctx.textAlign = "left"
+    ctx.fillStyle = profile.fg
+    let y = 10
+    for (const line of profile.detail) {ctx.fillText(line, 10, y); y += 14}
+    y += 8
+    ctx.fillStyle = profile.accent
+    const cycle = seconds % 8
+    const username = "guest"
+    const typed = cycle < 2 ? username.slice(0, Math.floor((cycle / 2) * username.length)) : username
+    const blink = Math.floor(seconds * 2) % 2 === 0
+    const cursor = cycle < 2.3 ? (blink ? "_" : " ") : ""
+    ctx.fillText(`${profile.prompt} ${typed}${cursor}`, 10, y)
+    if (cycle >= 2.3) {
+        y += 16
+        ctx.fillStyle = profile.fg
+        ctx.fillText(cycle < 5 ? "Password: ********" : "Last login: today", 10, y)
+    }
+}
+
+// Shared title/prompt chrome for the arcade-style game screens below.
+const drawArcadeChrome = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.font = "bold 12px ui-monospace, Menlo, Consolas, monospace"
+    ctx.textAlign = "center"
+    ctx.textBaseline = "top"
+    ctx.fillStyle = profile.accent
+    ctx.fillText(profile.name.toUpperCase(), w / 2, 8)
+    if (Math.floor(seconds * 1.5) % 2 === 0) {
+        ctx.font = "10px ui-monospace, Menlo, Consolas, monospace"
+        ctx.fillStyle = profile.fg
+        ctx.fillText(profile.prompt, w / 2, h - 16)
+    }
+}
+
+const drawShooterScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    for (let i = 0; i < 30; i++) {
+        const seed = i * 53.7
+        const x = (seed * 7) % w
+        const y = (seed * 11 + seconds * 20) % h
+        ctx.fillStyle = profile.fg
+        ctx.fillRect(x, y, 1, 1)
+    }
+    // A simple wedge-shaped ship near the bottom, drifting slightly side to side.
+    const shipX = w / 2 + Math.sin(seconds * 0.8) * w * 0.25
+    const shipY = h - 34
+    ctx.fillStyle = profile.accent
+    ctx.beginPath()
+    ctx.moveTo(shipX, shipY - 8)
+    ctx.lineTo(shipX + 7, shipY + 8)
+    ctx.lineTo(shipX - 7, shipY + 8)
+    ctx.closePath()
+    ctx.fill()
+    // A few descending enemies, looping from the top once they pass the bottom.
+    for (let i = 0; i < 4; i++) {
+        const ex = w * (0.2 + i * 0.2)
+        const ey = (seconds * 30 + i * 40) % (h - 50) + 20
+        ctx.save()
+        ctx.translate(ex, ey)
+        ctx.rotate(Math.PI / 4)
+        ctx.fillStyle = profile.fg
+        ctx.fillRect(-4, -4, 8, 8)
+        ctx.restore()
+    }
+    ctx.textAlign = "left"
+    ctx.textBaseline = "top"
+    ctx.font = "9px ui-monospace, Menlo, Consolas, monospace"
+    ctx.fillStyle = profile.fg
+    ctx.fillText(`SCORE ${(Math.floor(seconds * 37) % 100000).toString().padStart(6, "0")}`, 8, 24)
+    drawArcadeChrome(ctx, w, h, profile, seconds)
+}
+
+const drawMazeScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    const left = 20, top = 40, right = w - 20, bottom = h - 30
+    ctx.strokeStyle = "#444444"
+    ctx.lineWidth = 2
+    ctx.strokeRect(left, top, right - left, bottom - top)
+    for (let i = 1; i < 3; i++) {
+        const x = left + (right - left) * (i / 3)
+        ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + (bottom - top) * 0.5); ctx.stroke()
+    }
+    // A mover looping clockwise around the inner rectangle's perimeter, eating fixed dots.
+    const perimeter = 2 * (right - left - 20) + 2 * (bottom - top - 20)
+    const t = (seconds * 40) % perimeter
+    const path = {x: left + 10, y: top + 10}
+    let remaining = t
+    const segW = right - left - 20, segH = bottom - top - 20
+    if (remaining <= segW) {path.x += remaining} else {
+        remaining -= segW; path.x += segW
+        if (remaining <= segH) {path.y += remaining} else {
+            remaining -= segH; path.y += segH
+            if (remaining <= segW) {path.x -= remaining} else {
+                remaining -= segW; path.x -= segW; path.y -= remaining
+            }
+        }
+    }
+    ctx.fillStyle = profile.accent
+    ctx.beginPath()
+    ctx.arc(path.x, path.y, 5, 0, Math.PI * 2)
+    ctx.fill()
+    // A chaser, same path with a phase offset.
+    const t2 = (t + perimeter * 0.4) % perimeter
+    let remaining2 = t2
+    const path2 = {x: left + 10, y: top + 10}
+    if (remaining2 <= segW) {path2.x += remaining2} else {
+        remaining2 -= segW; path2.x += segW
+        if (remaining2 <= segH) {path2.y += remaining2} else {
+            remaining2 -= segH; path2.y += segH
+            if (remaining2 <= segW) {path2.x -= remaining2} else {
+                remaining2 -= segW; path2.x -= segW; path2.y -= remaining2
+            }
+        }
+    }
+    ctx.fillStyle = profile.fg
+    ctx.beginPath()
+    ctx.moveTo(path2.x, path2.y - 5)
+    ctx.lineTo(path2.x + 5, path2.y + 5)
+    ctx.lineTo(path2.x - 5, path2.y + 5)
+    ctx.closePath()
+    ctx.fill()
+    drawArcadeChrome(ctx, w, h, profile, seconds)
+}
+
+const drawCastleScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    const groundY = h - 40
+    ctx.fillStyle = "#335522"
+    ctx.fillRect(0, groundY, w, h - groundY)
+    const drawCastle = (x: number): void => {
+        ctx.fillStyle = profile.accent
+        ctx.fillRect(x, groundY - 30, 26, 30)
+        for (let i = 0; i < 3; i++) {ctx.fillRect(x + i * 9, groundY - 36, 6, 6)}
+    }
+    drawCastle(14)
+    drawCastle(w - 40)
+    // A projectile arcing between the two castles on a repeating loop.
+    const t = (seconds * 0.6) % 1
+    const px = 30 + t * (w - 70)
+    const py = groundY - 28 - Math.sin(t * Math.PI) * 60
+    ctx.fillStyle = profile.fg
+    ctx.beginPath()
+    ctx.arc(px, py, 3, 0, Math.PI * 2)
+    ctx.fill()
+    drawArcadeChrome(ctx, w, h, profile, seconds)
+}
+
+const drawPlatformerScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    const platforms = [{x: 20, y: h - 30, w: 60}, {x: 110, y: h - 70, w: 50}, {x: 190, y: h - 50, w: 46}]
+    ctx.fillStyle = "#664422"
+    for (const platform of platforms) {ctx.fillRect(platform.x, platform.y, platform.w, 8)}
+    // A hero hopping between the platforms on a repeating loop.
+    const cycle = (seconds * 0.5) % platforms.length
+    const index = Math.floor(cycle)
+    const from = platforms[index], to = platforms[(index + 1) % platforms.length]
+    const frac = cycle - index
+    const heroX = from.x + from.w / 2 + (to.x + to.w / 2 - (from.x + from.w / 2)) * frac
+    const heroY = from.y - 10 - Math.sin(frac * Math.PI) * 24
+    ctx.fillStyle = profile.accent
+    ctx.fillRect(heroX - 5, heroY - 10, 10, 10)
+    drawArcadeChrome(ctx, w, h, profile, seconds)
+}
+
+const drawRacerScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    const horizon = h * 0.4
+    ctx.fillStyle = "#101010"
+    ctx.fillRect(0, horizon, w, h - horizon)
+    ctx.strokeStyle = "#666666"
+    ctx.beginPath()
+    ctx.moveTo(w * 0.42, horizon); ctx.lineTo(0, h)
+    ctx.moveTo(w * 0.58, horizon); ctx.lineTo(w, h)
+    ctx.stroke()
+    ctx.strokeStyle = profile.accent
+    ctx.lineWidth = 3
+    const dashOffset = (seconds * 120) % 24
+    for (let y = horizon + dashOffset; y < h; y += 24) {
+        const scale = (y - horizon) / (h - horizon)
+        const dashW = 2 + scale * 4
+        ctx.fillStyle = profile.accent
+        ctx.fillRect(w / 2 - dashW / 2, y, dashW, 10)
+    }
+    ctx.fillStyle = "#DD3333"
+    ctx.fillRect(w / 2 - 12, h - 26, 24, 16)
+    drawArcadeChrome(ctx, w, h, profile, seconds)
+}
+
+const drawPuzzleScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    ctx.fillStyle = profile.bg
+    ctx.fillRect(0, 0, w, h)
+    const cols = 6, rows = 5, cell = 20
+    const left = (w - cols * cell) / 2, top = 28
+    const palette = ["#FF5555", "#55FF55", "#5588FF", "#FFFF55", "#FF55FF", "#55FFFF"]
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const seed = (r * cols + c) * 13 + Math.floor(seconds * 0.8)
+            ctx.fillStyle = palette[seed % palette.length]
+            ctx.fillRect(left + c * cell + 1, top + r * cell + 1, cell - 2, cell - 2)
+        }
+    }
+    for (const line of profile.detail) {
+        ctx.font = "9px ui-monospace, Menlo, Consolas, monospace"
+        ctx.textAlign = "left"
+        ctx.textBaseline = "top"
+        ctx.fillStyle = profile.fg
+        ctx.fillText(line, 8, h - 34)
+    }
+    drawArcadeChrome(ctx, w, h, profile, seconds)
+}
+
+const drawMuseumScreen = (ctx: CanvasRenderingContext2D, w: number, h: number, profile: MuseumProfile, seconds: number): void => {
+    switch (profile.kind) {
+        case "dos": return drawDosScreen(ctx, w, h, profile, seconds)
+        case "c64": return drawC64Screen(ctx, w, h, profile, seconds)
+        case "gui": return drawGuiScreen(ctx, w, h, profile, seconds)
+        case "unix": return drawUnixScreen(ctx, w, h, profile, seconds)
+        case "shooter": return drawShooterScreen(ctx, w, h, profile, seconds)
+        case "maze": return drawMazeScreen(ctx, w, h, profile, seconds)
+        case "castle": return drawCastleScreen(ctx, w, h, profile, seconds)
+        case "platformer": return drawPlatformerScreen(ctx, w, h, profile, seconds)
+        case "racer": return drawRacerScreen(ctx, w, h, profile, seconds)
+        case "puzzle": return drawPuzzleScreen(ctx, w, h, profile, seconds)
+    }
 }
 
 const drawVgaDiamond = (ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, color: string): void => {
@@ -234,6 +536,16 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
                    reactivityValue.textContent = `${value.toFixed(2)}x`
                }}/>
     )
+    const glow = lifecycle.own(new DefaultObservableValue(1))
+    const glowValue = <span>1.00x</span> as HTMLSpanElement
+    const glowInput: HTMLInputElement = (
+        <input type="range" min="0" max="2.5" step="0.05" value="1"
+               oninput={() => {
+                   const value = parseFloat(glowInput.value)
+                   glow.setValue(value)
+                   glowValue.textContent = `${value.toFixed(2)}x`
+               }}/>
+    )
     const presetSelect: HTMLSelectElement = (
         <select>
             {PRESETS.map(preset => <option value={preset.name}>{preset.name}</option>)}
@@ -251,6 +563,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
             <label>Preset {presetSelect}</label>
             <label>Speed {speedInput} {speedValue}</label>
             <label>Reactivity {reactivityInput} {reactivityValue}</label>
+            <label>Glow {glowInput} {glowValue}</label>
             <label>{spinInput} Free spin</label>
             <label>{consoleInput} Console</label>
         </div>
@@ -262,7 +575,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const consoleLines: Array<string> = []
     const pushConsoleLine = (line: string): void => {
         consoleLines.push(line)
-        if (consoleLines.length > 6) {consoleLines.shift()}
+        if (consoleLines.length > 3) {consoleLines.shift()}
         consoleEl.textContent = consoleLines.map(entry => `> ${entry}`).join("\n")
     }
     let lastConsoleStatAt = 0
@@ -368,10 +681,11 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         })
     scene.add(foldingGroup)
 
-    // "Retro OS Museum" preset: a little gallery of floating screens, each looping a stylized,
-    // non-pixel-exact nod to a classic command-line/boot screen. All wording below is original
-    // fan-tribute flavor text, not a reproduction of any real OS's actual boot banner or logo.
-    const museumScreens: ReadonlyArray<MuseumScreen> = MUSEUM_PROFILES.map((profile, i) => {
+    // "Retro OS Museum" / "Arcade Game Museum" presets: a little gallery of floating screens,
+    // each looping a stylized, non-pixel-exact homage to a classic boot/title screen. The same
+    // set of floating planes is reused for both galleries - applyPreset() just swaps which
+    // profile each screen is currently drawing (see MUSEUM_OS_PROFILES/MUSEUM_GAME_PROFILES).
+    const museumScreens: ReadonlyArray<MuseumScreen> = MUSEUM_OS_PROFILES.map((profile, i) => {
         const canvas = document.createElement("canvas")
         canvas.width = MUSEUM_FB_WIDTH
         canvas.height = MUSEUM_FB_HEIGHT
@@ -387,7 +701,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
             radius: 5 + (i % 3) * 1.6,
             height: 1 + (i % 4) * 1.3,
             speed: 0.05 + (i % 5) * 0.012,
-            phase: (i / MUSEUM_PROFILES.length) * Math.PI * 2
+            phase: (i / MUSEUM_OS_PROFILES.length) * Math.PI * 2
         }
     })
     const museumGroup = new THREE.Group()
@@ -536,13 +850,17 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const applyPreset = (preset: Preset): void => {
         activePreset = preset
         core.geometry = coreGeometries[preset.shape]
-        core.visible = !preset.planets && !preset.vga && !preset.folding && !preset.museum
-        bars.visible = !preset.vga && !preset.folding && !preset.museum
+        core.visible = !preset.planets && !preset.vga && !preset.folding && !preset.museumGallery
+        bars.visible = !preset.vga && !preset.folding && !preset.museumGallery
         planetGroup.visible = preset.planets === true
         vgaPlane.visible = preset.vga === true
         rain.visible = preset.cityscape === true
         foldingGroup.visible = preset.folding === true
-        museumGroup.visible = preset.museum === true
+        museumGroup.visible = preset.museumGallery !== undefined
+        if (preset.museumGallery !== undefined) {
+            const gallery = preset.museumGallery === "os" ? MUSEUM_OS_PROFILES : MUSEUM_GAME_PROFILES
+            museumScreens.forEach((screen, i) => {screen.profile = gallery[i % gallery.length]})
+        }
         floorTint.set(preset.tint)
         starTint.set(preset.tint)
         scene.rotation.z = 0
@@ -570,6 +888,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         const seconds = now * 0.001
         const speedValueNow = speed.getValue()
         const reactivityValueNow = reactivity.getValue()
+        const glowValueNow = glow.getValue()
         const preset = activePreset
 
         // Fog/world-tilt are shared scene state, so they're set uniformly for every preset
@@ -580,7 +899,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         scene.rotation.z = preset.folding ? Math.sin(seconds * 0.1 * speedValueNow) * 0.12 * reactivityValueNow : 0
 
         const barScale = preset.barScale ?? 1
-        if (!preset.vga && !preset.folding && !preset.museum) {
+        if (!preset.vga && !preset.folding && !preset.museumGallery) {
             for (let index = 0; index < BAR_COUNT; index++) {
                 const level = spectrum[barBins[index]] / 255
                 // Sizes go wild: a steep curve plus a punch-driven overshoot, so quiet bars stay
@@ -624,7 +943,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
             foldingGroup.rotation.y = seconds * 0.05 * speedValueNow
         }
 
-        if (preset.museum) {
+        if (preset.museumGallery) {
             for (const screen of museumScreens) {
                 const angle = screen.phase + seconds * screen.speed * speedValueNow
                 screen.plane.position.set(
@@ -798,7 +1117,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         stars.rotation.y = seconds * 0.01 * speedValueNow
         stars.rotation.x = Math.sin(seconds * 0.03) * 0.1
 
-        bloomPass.strength = 1.3 + punch * 2 * reactivityValueNow + treble * 0.4
+        bloomPass.strength = (1.3 + punch * 2 * reactivityValueNow + treble * 0.4) * glowValueNow
         ;(floorGrid.material as THREE.Material).opacity = 0.25 + mid * 0.5 * reactivityValueNow
 
         const status = player.currentStatus
