@@ -551,6 +551,12 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
             {PRESETS.map(preset => <option value={preset.name}>{preset.name}</option>)}
         </select>
     )
+    const cycleInput: HTMLInputElement = <input type="checkbox"/>
+    const cycleSecondsValue = <span>20s</span> as HTMLSpanElement
+    const cycleSecondsInput: HTMLInputElement = (
+        <input type="range" min="5" max="120" step="5" value="20"
+               oninput={() => {cycleSecondsValue.textContent = `${cycleSecondsInput.value}s`}}/>
+    )
     const spinInput: HTMLInputElement = <input type="checkbox" checked/>
     const consoleEl: HTMLDivElement = <div className="console"/>
     consoleEl.hidden = true
@@ -561,6 +567,8 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const controlsBar: HTMLDivElement = (
         <div className="controls">
             <label>Preset {presetSelect}</label>
+            <label>{cycleInput} Auto-cycle</label>
+            <label>Every {cycleSecondsInput} {cycleSecondsValue}</label>
             <label>Speed {speedInput} {speedValue}</label>
             <label>Reactivity {reactivityInput} {reactivityValue}</label>
             <label>Glow {glowInput} {glowValue}</label>
@@ -871,11 +879,13 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     }
     applyPreset(PRESETS[0])
     pushConsoleLine(`PRESET: ${PRESETS[0].name.toUpperCase()}`)
+    let lastCycleAt = performance.now()
     presetSelect.addEventListener("change", () => {
         const preset = PRESETS.find(p => p.name === presetSelect.value)
         if (preset !== undefined) {
             applyPreset(preset)
             pushConsoleLine(`PRESET: ${preset.name.toUpperCase()}`)
+            lastCycleAt = performance.now()
         }
     })
 
@@ -1119,6 +1129,15 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
 
         bloomPass.strength = (1.3 + punch * 2 * reactivityValueNow + treble * 0.4) * glowValueNow
         ;(floorGrid.material as THREE.Material).opacity = 0.25 + mid * 0.5 * reactivityValueNow
+
+        if (cycleInput.checked && now - lastCycleAt > parseFloat(cycleSecondsInput.value) * 1000) {
+            const currentIndex = PRESETS.indexOf(preset)
+            const next = PRESETS[(currentIndex + 1) % PRESETS.length]
+            applyPreset(next)
+            presetSelect.value = next.name
+            pushConsoleLine(`PRESET: ${next.name.toUpperCase()}`)
+            lastCycleAt = now
+        }
 
         const status = player.currentStatus
         stateLine.value = player.playing.getValue() ? "PLAYING" : "STANDBY"
