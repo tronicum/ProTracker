@@ -27,6 +27,17 @@ component
     input[type="range"]
       width: 5.5rem
 
+    select
+      font: inherit
+      color: inherit
+      background-color: var(--color-panel-background-bright)
+      border: 1px solid var(--color-shadow)
+      border-radius: 3px
+      padding: 0.15em 0.3em
+
+    input[type="checkbox"]
+      accent-color: #0affd9
+
   .stage
     position: relative
     flex: 1
@@ -74,3 +85,22 @@ component
     span
       display: block
       opacity: 0.85
+
+  .console
+    position: absolute
+    left: 0.75rem
+    right: 0.75rem
+    bottom: 0.75rem
+    max-height: 7.5rem
+    padding: 0.4rem 0.6rem
+    background: rgba(0, 0, 0, 0.78)
+    border: 1px solid rgba(80, 255, 120, 0.3)
+    border-radius: 4px
+    color: #6aff8a
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace
+    font-size: 0.68rem
+    line-height: 1.5
+    white-space: pre-wrap
+    pointer-events: none
+    overflow: hidden
+    text-shadow: 0 0 0.4rem rgba(80, 255, 120, 0.5)

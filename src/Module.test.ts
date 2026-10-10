@@ -89,6 +89,30 @@ describe("Module.parse", () => {
     it("still throws a generic error for genuinely malformed input", () => {
         expect(() => Module.parse(new Uint8Array(10))).toThrow()
     })
+
+    it("rejects a FastTracker II XM module instead of silently garbage-parsing it", () => {
+        // Without this check, pad15to31() would stamp "M.K." onto this (it's >= 600 bytes and
+        // carries none of the TAGS/MULTI_CHANNEL_TAGS markers at offset 1080) and Module.parse
+        // would "succeed" with a Module built from misread XM header/pattern data.
+        const data = new Uint8Array(2000)
+        const signature = "Extended Module: "
+        for (let i = 0; i < signature.length; i++) {data[i] = signature.charCodeAt(i)}
+        expect(() => Module.parse(data)).toThrow(/XM.*not a ProTracker-compatible format/)
+    })
+
+    it("rejects an Impulse Tracker IT module", () => {
+        const data = new Uint8Array(2000)
+        const signature = "IMPM"
+        for (let i = 0; i < signature.length; i++) {data[i] = signature.charCodeAt(i)}
+        expect(() => Module.parse(data)).toThrow(/Impulse Tracker/)
+    })
+
+    it("rejects a Scream Tracker 3 S3M module (signature at offset 44)", () => {
+        const data = new Uint8Array(2000)
+        const signature = "SCRM"
+        for (let i = 0; i < signature.length; i++) {data[44 + i] = signature.charCodeAt(i)}
+        expect(() => Module.parse(data)).toThrow(/S3M/)
+    })
 })
 
 describe("Module.pad15to31", () => {
