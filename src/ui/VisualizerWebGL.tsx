@@ -564,16 +564,27 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const consoleInput: HTMLInputElement = (
         <input type="checkbox" onchange={() => {consoleEl.hidden = !consoleInput.checked}}/>
     )
+    const cycleDurationLabel: HTMLLabelElement = (
+        <label>Every {cycleSecondsInput} {cycleSecondsValue}</label>
+    )
+    cycleDurationLabel.hidden = true
+    cycleInput.addEventListener("change", () => {cycleDurationLabel.hidden = !cycleInput.checked})
     const controlsBar: HTMLDivElement = (
         <div className="controls">
-            <label>Preset {presetSelect}</label>
-            <label>{cycleInput} Auto-cycle</label>
-            <label>Every {cycleSecondsInput} {cycleSecondsValue}</label>
-            <label>Speed {speedInput} {speedValue}</label>
-            <label>Reactivity {reactivityInput} {reactivityValue}</label>
-            <label>Glow {glowInput} {glowValue}</label>
-            <label>{spinInput} Free spin</label>
-            <label>{consoleInput} Console</label>
+            <div className="group">
+                <label>Preset {presetSelect}</label>
+                <label>{cycleInput} Auto-cycle</label>
+                {cycleDurationLabel}
+            </div>
+            <div className="group">
+                <label>Speed {speedInput} {speedValue}</label>
+                <label>Reactivity {reactivityInput} {reactivityValue}</label>
+                <label>Glow {glowInput} {glowValue}</label>
+            </div>
+            <div className="group">
+                <label>{spinInput} Free spin</label>
+                <label>{consoleInput} Console</label>
+            </div>
         </div>
     )
     const element: HTMLDivElement = <div className={className}>{controlsBar}{stage}</div>
