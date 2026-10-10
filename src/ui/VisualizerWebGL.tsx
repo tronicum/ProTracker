@@ -234,6 +234,16 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
                    reactivityValue.textContent = `${value.toFixed(2)}x`
                }}/>
     )
+    const glow = lifecycle.own(new DefaultObservableValue(1))
+    const glowValue = <span>1.00x</span> as HTMLSpanElement
+    const glowInput: HTMLInputElement = (
+        <input type="range" min="0" max="2.5" step="0.05" value="1"
+               oninput={() => {
+                   const value = parseFloat(glowInput.value)
+                   glow.setValue(value)
+                   glowValue.textContent = `${value.toFixed(2)}x`
+               }}/>
+    )
     const presetSelect: HTMLSelectElement = (
         <select>
             {PRESETS.map(preset => <option value={preset.name}>{preset.name}</option>)}
@@ -251,6 +261,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
             <label>Preset {presetSelect}</label>
             <label>Speed {speedInput} {speedValue}</label>
             <label>Reactivity {reactivityInput} {reactivityValue}</label>
+            <label>Glow {glowInput} {glowValue}</label>
             <label>{spinInput} Free spin</label>
             <label>{consoleInput} Console</label>
         </div>
@@ -262,7 +273,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
     const consoleLines: Array<string> = []
     const pushConsoleLine = (line: string): void => {
         consoleLines.push(line)
-        if (consoleLines.length > 6) {consoleLines.shift()}
+        if (consoleLines.length > 3) {consoleLines.shift()}
         consoleEl.textContent = consoleLines.map(entry => `> ${entry}`).join("\n")
     }
     let lastConsoleStatAt = 0
@@ -570,6 +581,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         const seconds = now * 0.001
         const speedValueNow = speed.getValue()
         const reactivityValueNow = reactivity.getValue()
+        const glowValueNow = glow.getValue()
         const preset = activePreset
 
         // Fog/world-tilt are shared scene state, so they're set uniformly for every preset
@@ -798,7 +810,7 @@ export const VisualizerWebGL = ({lifecycle, player}: Construct) => {
         stars.rotation.y = seconds * 0.01 * speedValueNow
         stars.rotation.x = Math.sin(seconds * 0.03) * 0.1
 
-        bloomPass.strength = 1.3 + punch * 2 * reactivityValueNow + treble * 0.4
+        bloomPass.strength = (1.3 + punch * 2 * reactivityValueNow + treble * 0.4) * glowValueNow
         ;(floorGrid.material as THREE.Material).opacity = 0.25 + mid * 0.5 * reactivityValueNow
 
         const status = player.currentStatus
